@@ -33,5 +33,7 @@ def test_pad_sequence_from_left():
         ),
     ]
     expected = torch.tensor([[0.0, 1.0, 2.0], [-1.0, -1.0, 3.0], [-1.0, 6.0, 7.0]])
-    actual = torch_ops.pad_sequence_from_left(sequences, batch_first=True, padding_value=-1)
+    actual = torch_ops.pad_sequence_from_left(
+        sequences, batch_first=True, padding_value=-1
+    )
     torch.testing.assert_close(actual, expected)

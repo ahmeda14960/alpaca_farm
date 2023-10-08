@@ -46,7 +46,12 @@ def setup(rank: Optional[int] = None, world_size: Optional[int] = None):
             # in init_process_group to a local file.
             # Example init_method="file:///f:/libtmp/some_file"
             init_method = "file:///f:/libtmp/dist-tmp"
-            dist.init_process_group(backend="gloo", init_method=init_method, rank=rank, world_size=world_size)
+            dist.init_process_group(
+                backend="gloo",
+                init_method=init_method,
+                rank=rank,
+                world_size=world_size,
+            )
         elif torch.cuda.is_available():
             dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
         else:

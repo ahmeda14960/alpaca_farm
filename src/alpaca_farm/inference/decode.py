@@ -65,15 +65,25 @@ def load_model_and_tokenizer_for_inference(
     logger.warning(f"Loading model for inference: {model_name_or_path}")
 
     local_rank, world_size = distributed_utils.setup()
-    device = torch.device("cuda", local_rank) if torch.cuda.is_available() else torch.device("cpu")
-    default_model_kwargs = dict(low_cpu_mem_usage=True, device_map={"": device}, cache_dir=cache_dir)
+    device = (
+        torch.device("cuda", local_rank)
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    default_model_kwargs = dict(
+        low_cpu_mem_usage=True, device_map={"": device}, cache_dir=cache_dir
+    )
     if model_kwargs is None:
         model_kwargs = default_model_kwargs
     else:
-        default_model_kwargs.update(model_kwargs)  # Make possible overriding default_model_kwargs.
+        default_model_kwargs.update(
+            model_kwargs
+        )  # Make possible overriding default_model_kwargs.
         model_kwargs = default_model_kwargs
 
-    default_tokenizer_kwargs = dict(padding_side="left", use_fast=False, cache_dir=cache_dir)
+    default_tokenizer_kwargs = dict(
+        padding_side="left", use_fast=False, cache_dir=cache_dir
+    )
     if tokenizer_kwargs is None:
         tokenizer_kwargs = default_tokenizer_kwargs
     else:
@@ -81,7 +91,9 @@ def load_model_and_tokenizer_for_inference(
         tokenizer_kwargs = default_tokenizer_kwargs
 
     model = model_cls.from_pretrained(model_name_or_path, **model_kwargs).eval()
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_name_or_path, **tokenizer_kwargs)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        model_name_or_path, **tokenizer_kwargs
+    )
     if tokenizer.pad_token is None:
         # base llama does not come with a pad token, possible for other pretrained models as well
         tokenizer.add_special_tokens({"pad_token": constants.DEFAULT_PAD_TOKEN})
@@ -109,7 +121,9 @@ class HFDecodingArguments:
     temperature: float = 1.0
     do_sample: bool = True
     num_beams: int = 1
-    max_new_tokens: int = 100  # This is aligned with `openai_utils.OpenAIDecodingArguments`.
+    max_new_tokens: int = (
+        100  # This is aligned with `openai_utils.OpenAIDecodingArguments`.
+    )
     num_return_sequences: int = 1
 
 
@@ -137,19 +151,33 @@ def decode_prompts_with_huggingface_given_model(
     if seed is not None:
         utils.manual_seed(seed)
 
-    torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = tf32  # noqa
+    torch.backends.cuda.matmul.allow_tf32 = (
+        torch.backends.cudnn.allow_tf32
+    ) = tf32  # noqa
 
     local_rank, world_size = distributed_utils.setup()
-    device = torch.device("cuda", local_rank) if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.device("cuda", local_rank)
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
 
-    model.generate = common.cast_with_native_amp(model.generate, mixed_precision=mixed_precision)
+    model.generate = common.cast_with_native_amp(
+        model.generate, mixed_precision=mixed_precision
+    )
     logger.warning(f"mixed_precision = {mixed_precision}")
 
     generate_kwargs = copy.deepcopy(decoding_args.__dict__)
     generate_kwargs.update(
-        dict(eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id, synced_gpus=world_size > 1)
+        dict(
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            synced_gpus=world_size > 1,
+        )
     )
-    generate_kwargs.update(decoding_kwargs)  # Possibly overwrite default values for `pad_token_id` and `eos_token_id`.
+    generate_kwargs.update(
+        decoding_kwargs
+    )  # Possibly overwrite default values for `pad_token_id` and `eos_token_id`.
 
     prompts = prompts[:max_instances]
     ori_data_size = len(prompts)
@@ -164,12 +192,16 @@ def decode_prompts_with_huggingface_given_model(
 
     if world_size > 1 and divide_work:  # divide into chunks
         per_worker_size = new_data_size // world_size
-        new_prompts = new_prompts[local_rank * per_worker_size : (local_rank + 1) * per_worker_size]
+        new_prompts = new_prompts[
+            local_rank * per_worker_size : (local_rank + 1) * per_worker_size
+        ]
     # TODO(lxuechen): Refactor to tokenize upfront. This way we can pad with tokenizer, and not worry ourselves.
 
     completions = []
     for batch_idx, start_idx in tqdm.tqdm(
-        enumerate(range(0, len(new_prompts), per_device_batch_size)),  # Increase the index by the actual batch size.
+        enumerate(
+            range(0, len(new_prompts), per_device_batch_size)
+        ),  # Increase the index by the actual batch size.
         desc="decoding batches",
         total=len(new_prompts) // per_device_batch_size,
         disable=not distributed_utils.is_main_process(),
@@ -195,10 +227,15 @@ def decode_prompts_with_huggingface_given_model(
             # initialize the list of return sequences for each prompt
             sequences = []
             for internal_start_idx in range(
-                0, generate_kwargs["num_return_sequences"], internal_batch_return_sequences
+                0,
+                generate_kwargs["num_return_sequences"],
+                internal_batch_return_sequences,
             ):
-                internal_batch_size = batch_generate_kwargs["num_return_sequences"] = min(
-                    internal_batch_return_sequences, generate_kwargs["num_return_sequences"] - internal_start_idx
+                internal_batch_size = batch_generate_kwargs[
+                    "num_return_sequences"
+                ] = min(
+                    internal_batch_return_sequences,
+                    generate_kwargs["num_return_sequences"] - internal_start_idx,
                 )
                 internal_batch_sequences = model.generate(
                     inputs=inputs,
@@ -206,7 +243,9 @@ def decode_prompts_with_huggingface_given_model(
                     **batch_generate_kwargs,
                 )
                 if not model.config.is_encoder_decoder:
-                    internal_batch_sequences = internal_batch_sequences[:, inputs.shape[1] :]
+                    internal_batch_sequences = internal_batch_sequences[
+                        :, inputs.shape[1] :
+                    ]
                 internal_batch_sequences = torch_ops.right_pad(
                     internal_batch_sequences,
                     (internal_batch_sequences.size(0), pad_to_length),
@@ -231,30 +270,46 @@ def decode_prompts_with_huggingface_given_model(
                     f"num_return_sequences ({decoding_args.num_return_sequences}). Not batching over return sequences."
                 )
 
-            sequences = model.generate(inputs=inputs, attention_mask=attention_mask, **generate_kwargs)
+            sequences = model.generate(
+                inputs=inputs, attention_mask=attention_mask, **generate_kwargs
+            )
             if not model.config.is_encoder_decoder:
                 sequences = sequences[:, inputs.shape[1] :]
-            sequences = torch_ops.right_pad(sequences, (sequences.size(0), pad_to_length), value=tokenizer.pad_token_id)
+            sequences = torch_ops.right_pad(
+                sequences,
+                (sequences.size(0), pad_to_length),
+                value=tokenizer.pad_token_id,
+            )
 
         out_of_bound_mask = sequences >= len(tokenizer)
         if out_of_bound_mask.any():
-            logger.fatal(f"Found tokens outside the vocabulary: {sequences[out_of_bound_mask]}")
+            logger.fatal(
+                f"Found tokens outside the vocabulary: {sequences[out_of_bound_mask]}"
+            )
         completions.append(sequences.cpu())
 
     completions = torch.cat(completions, dim=0)
     if world_size > 1 and divide_work:
         torch.cuda.empty_cache()
-        logger.info(f"RANK {local_rank} starting all_gather with {communication_num_chunks} communication_num_chunks")
-        mine = einops.rearrange(completions, "(n d) l -> n d l", d=generate_kwargs["num_return_sequences"])
+        logger.info(
+            f"RANK {local_rank} starting all_gather with {communication_num_chunks} communication_num_chunks"
+        )
+        mine = einops.rearrange(
+            completions, "(n d) l -> n d l", d=generate_kwargs["num_return_sequences"]
+        )
         chunks = torch.chunk(mine, chunks=communication_num_chunks, dim=1)
         all_chunk_list = [
-            distributed_utils.all_gather_and_cat(chunk.contiguous().to(device), dim=0).cpu() for chunk in chunks
+            distributed_utils.all_gather_and_cat(
+                chunk.contiguous().to(device), dim=0
+            ).cpu()
+            for chunk in chunks
         ]
         completions = torch.cat(all_chunk_list, dim=1)
         completions = einops.rearrange(completions, "n d l -> (n d) l")
 
     logger.info(
-        f"RANK {local_rank} Start tokenizer batch decoding {completions.size(0)} sequences", main_process_only=False
+        f"RANK {local_rank} Start tokenizer batch decoding {completions.size(0)} sequences",
+        main_process_only=False,
     )
     # chunk completions into chunks of 1000 and tokenize
     text_sequences = []
@@ -270,7 +325,10 @@ def decode_prompts_with_huggingface_given_model(
         for cleanup_func in cleanup_funcs:
             text_sequences = [cleanup_func(s) for s in text_sequences]
 
-    logger.info(f"RANK {local_rank} Finished tokenizer batch decoding and cleaning", main_process_only=False)
+    logger.info(
+        f"RANK {local_rank} Finished tokenizer batch decoding and cleaning",
+        main_process_only=False,
+    )
     # convert the list into a nested list of consecutive `num_return_sequences` items, if > 1.
     if decoding_args.num_return_sequences > 1 or force_multisample_format:
         text_sequences = [
@@ -325,7 +383,9 @@ def decode_prompts_with_huggingface(
     model, tokenizer = load_model_and_tokenizer_for_inference(
         model_name_or_path=model_name_or_path,
         cache_dir=cache_dir,
-        model_kwargs=dict(torch_dtype=utils.convert_str_dtype_to_torch_dtype(mixed_precision)),
+        model_kwargs=dict(
+            torch_dtype=utils.convert_str_dtype_to_torch_dtype(mixed_precision)
+        ),
     )
     return decode_prompts_with_huggingface_given_model(
         model=model,

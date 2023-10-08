@@ -20,7 +20,14 @@ import datasets
 import fire
 import pandas as pd
 
-from alpaca_farm import constants, data_preprocessor, logging, openai_utils, types, utils
+from alpaca_farm import (
+    constants,
+    data_preprocessor,
+    logging,
+    openai_utils,
+    types,
+    utils,
+)
 
 logger = logging.get_logger(__name__)
 MODEL_TO_PROMPTS = {
@@ -76,11 +83,15 @@ def main_oai_baselines(
     )
 
     if openai_utils.requires_chatml(model_name):
-        decoding_args = decoding_args or openai_utils.OpenAIDecodingArgumentsChat(temperature=0.7, max_tokens=300)
+        decoding_args = decoding_args or openai_utils.OpenAIDecodingArgumentsChat(
+            temperature=0.7, max_tokens=300
+        )
         num_procs = num_procs or 5
         batch_size = batch_size or 1
     else:
-        decoding_args = decoding_args or openai_utils.OpenAIDecodingArguments(temperature=0.7, max_tokens=300)
+        decoding_args = decoding_args or openai_utils.OpenAIDecodingArguments(
+            temperature=0.7, max_tokens=300
+        )
         num_procs = num_procs or 1
         batch_size = batch_size or 10
 
@@ -108,7 +119,9 @@ def main_oai_baselines(
 
     if save_path is not None:
         logger.info(f"Saving to {save_path.format(model_name=model_name)}")
-        df_data[columns_to_keep].to_json(save_path.format(model_name=model_name), orient="records", indent=2)
+        df_data[columns_to_keep].to_json(
+            save_path.format(model_name=model_name), orient="records", indent=2
+        )
 
     return df_data[columns_to_keep]
 

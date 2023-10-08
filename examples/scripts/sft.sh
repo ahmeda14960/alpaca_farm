@@ -1,13 +1,13 @@
-output_dir=$1
-run_name=$2
+#output_dir=$1
+run_name=$1
 model_name_or_path=$3
 
-torchrun --nproc_per_node=8 --master_port=1234 examples/supervised.py \
-  --model_name_or_path "${model_name_or_path}" \
+torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
+  --model_name_or_path "facebook/opt-6.7b" \
   --fp16 False \
   --bf16 True \
   --seed 42 \
-  --output_dir "${output_dir}" \
+  --output_dir "/scr-ssd/ahmedah/" \
   --num_train_epochs 3 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
@@ -26,8 +26,8 @@ torchrun --nproc_per_node=8 --master_port=1234 examples/supervised.py \
   --run_name "${run_name}" \
   --tf32 True \
   --flash_attn True \
-  --model_max_length 512 \
+  --model_max_length 2048 \
   --ddp_timeout 1800 \
   --fsdp "full_shard auto_wrap" \
-  --fsdp_transformer_layer_cls_to_wrap "LlamaDecoderLayer" \
+  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
   --train_splits "sft"

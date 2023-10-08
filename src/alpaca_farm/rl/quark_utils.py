@@ -52,7 +52,10 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     truncate_after: Optional[int] = field(
-        default=None, metadata={"help": "Truncate after this number of tokens. Prevents early truncation."}
+        default=None,
+        metadata={
+            "help": "Truncate after this number of tokens. Prevents early truncation."
+        },
     )
     penalty_reward_value: float = field(
         default=-1.0,
@@ -79,7 +82,10 @@ class TrainingArguments(transformers.TrainingArguments):
     target_kl: float = field(default=6.0)
     k_beta: float = field(default=0.1)
     adaptive_kl: bool = field(default=False)
-    eval_batches: int = field(default=sys.maxsize, metadata={"help": "Maximum number of batches to evaluate on."})
+    eval_batches: int = field(
+        default=sys.maxsize,
+        metadata={"help": "Maximum number of batches to evaluate on."},
+    )
     save_steps_extra: Optional[str] = field(
         default=None,
         metadata={
@@ -99,18 +105,25 @@ class TrainingArguments(transformers.TrainingArguments):
             "Use fast tokenizer only if you can live with that."
         },
     )
-    num_reward_tokens: int = field(default=4, metadata={"help": "Number of extra reward conditioning tokens in Quark."})
+    num_reward_tokens: int = field(
+        default=4,
+        metadata={"help": "Number of extra reward conditioning tokens in Quark."},
+    )
     entropy_coef: float = field(
         default=0.0,
         metadata={"help": "Entropy regularization coefficient for Quark."},
     )
     clear_data_pool_on_each_rollout: bool = field(
         default=True,
-        metadata={"help": "If True, clear the data pool before each rollout period for Quark."},
+        metadata={
+            "help": "If True, clear the data pool before each rollout period for Quark."
+        },
     )
     train_on_best_quantile: bool = field(
         default=True,
-        metadata={"help": "If True, train only on the examples with best rewards for Quark."},
+        metadata={
+            "help": "If True, train only on the examples with best rewards for Quark."
+        },
     )
     num_gradient_steps_per_step: int = field(
         default=1,
@@ -122,17 +135,22 @@ class TrainingArguments(transformers.TrainingArguments):
         # super().__post_init__()
 
         if self.tf32:  # super().__post_init__() actually does this.
-            torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True  # noqa
+            torch.backends.cuda.matmul.allow_tf32 = (
+                torch.backends.cudnn.allow_tf32
+            ) = True  # noqa
 
         world_size = distributed_utils.get_world_size()
 
         # Checks on rollout_batch_size only matter for PPO.
-        assert self.rollout_batch_size >= self.rollout_per_device_batch_size * world_size, (
+        assert (
+            self.rollout_batch_size >= self.rollout_per_device_batch_size * world_size
+        ), (
             "rollout_batch_size is smaller than rollout_per_device_batch_size * world_size. "
             "Increase the former or decrease the latter to fix this."
         )
         assert (
-            self.rollout_batch_size % (self.rollout_per_device_batch_size * world_size) == 0
+            self.rollout_batch_size % (self.rollout_per_device_batch_size * world_size)
+            == 0
         ), "rollout_batch_size is not a multiple of rollout_per_device_batch_size * world_size. "
 
         assert self.step_batch_size >= self.step_per_device_batch_size * world_size, (
@@ -149,8 +167,12 @@ class TrainingArguments(transformers.TrainingArguments):
             f"\trollout_per_device_batch_size: {self.rollout_per_device_batch_size}\n"
             f"\tworld_size: {world_size}\n",
         )
-        assert (self.rollout_batch_size // self.rollout_per_device_batch_size) % world_size == 0
-        self.rollout_accumulation_steps = self.rollout_batch_size // self.rollout_per_device_batch_size // world_size
+        assert (
+            self.rollout_batch_size // self.rollout_per_device_batch_size
+        ) % world_size == 0
+        self.rollout_accumulation_steps = (
+            self.rollout_batch_size // self.rollout_per_device_batch_size // world_size
+        )
 
         logger.warning(
             f"Step stats:\n"
@@ -158,8 +180,12 @@ class TrainingArguments(transformers.TrainingArguments):
             f"\tstep_per_device_batch_size: {self.step_per_device_batch_size}\n"
             f"\tworld_size: {world_size}\n",
         )
-        assert (self.step_batch_size // self.step_per_device_batch_size) % world_size == 0
-        self.gradient_accumulation_steps = self.step_batch_size // self.step_per_device_batch_size // world_size
+        assert (
+            self.step_batch_size // self.step_per_device_batch_size
+        ) % world_size == 0
+        self.gradient_accumulation_steps = (
+            self.step_batch_size // self.step_per_device_batch_size // world_size
+        )
 
         logger.warning(
             f"Accumulation steps:\n"
@@ -168,7 +194,9 @@ class TrainingArguments(transformers.TrainingArguments):
         )
 
         if self.save_steps_extra is not None:
-            self.save_steps_extra_list = [int(string) for string in self.save_steps_extra.split("__")]
+            self.save_steps_extra_list = [
+                int(string) for string in self.save_steps_extra.split("__")
+            ]
         else:
             self.save_steps_extra_list = []
 

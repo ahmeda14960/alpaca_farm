@@ -38,19 +38,25 @@ def make_supervised_data_module(
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
-    alpaca_instructions = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
-
-    train_df = pd.concat([pd.DataFrame(alpaca_instructions[split]) for split in data_args.train_splits])
+    alpaca_instructions = datasets.load_dataset(data_args.dataset_name)
+    data_args.train_splits = ["train"]
+    data_args.eval_splits = ["validation"]
+    train_df = pd.concat(
+        [pd.DataFrame(alpaca_instructions[split]) for split in data_args.train_splits]
+    )
     train_dataset = SFTDataset(
         df=train_df,
         prompt_dict=prompt_dict,
         tokenizer=tokenizer,
+        dataset=data_args.dataset_name,
     )
 
     eval_dataset = None
     if data_args.eval_splits is not None:
         found_splits = [
-            pd.DataFrame(alpaca_instructions[split]) for split in data_args.eval_splits if split in alpaca_instructions
+            pd.DataFrame(alpaca_instructions[split])
+            for split in data_args.eval_splits
+            if split in alpaca_instructions
         ]
         if len(found_splits) > 0:
             eval_df = pd.concat(found_splits)
@@ -58,6 +64,8 @@ def make_supervised_data_module(
                 df=eval_df,
                 prompt_dict=prompt_dict,
                 tokenizer=tokenizer,
+                dataset=data_args.dataset_name,
+                split=data_args.eval_splits[0],
             )
 
     if eval_dataset is None:
@@ -65,7 +73,11 @@ def make_supervised_data_module(
         training_args.do_eval = False
 
     data_collator = DataCollatorForSFTDataset(tokenizer=tokenizer)
-    return dict(train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator)
+    return dict(
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        data_collator=data_collator,
+    )
 
 
 def make_binary_reward_modeling_data_module(
@@ -75,7 +87,9 @@ def make_binary_reward_modeling_data_module(
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
-    alpaca_human_preference = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+    alpaca_human_preference = datasets.load_dataset(
+        data_args.dataset_path, data_args.dataset_name
+    )
     train_df = pd.DataFrame(alpaca_human_preference["preference"])
 
     train_dataset = BinaryRewardModelingDataset(
@@ -90,7 +104,11 @@ def make_binary_reward_modeling_data_module(
         seed=training_args.seed,
     )
     data_collator = DataCollatorForBinaryRewardModelingDataset(tokenizer=tokenizer)
-    return dict(train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator)
+    return dict(
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        data_collator=data_collator,
+    )
 
 
 def make_rl_data_module(
@@ -100,9 +118,15 @@ def make_rl_data_module(
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
-    alpaca_instructions = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
-    train_df = pd.concat([pd.DataFrame(alpaca_instructions[split]) for split in data_args.train_splits])
-    eval_df = pd.concat([pd.DataFrame(alpaca_instructions[split]) for split in data_args.eval_splits])
+    alpaca_instructions = datasets.load_dataset(
+        data_args.dataset_path, data_args.dataset_name
+    )
+    train_df = pd.concat(
+        [pd.DataFrame(alpaca_instructions[split]) for split in data_args.train_splits]
+    )
+    eval_df = pd.concat(
+        [pd.DataFrame(alpaca_instructions[split]) for split in data_args.eval_splits]
+    )
 
     if getattr(training_args, "num_reward_tokens", 0) > 0 and not getattr(
         training_args, "train_on_best_quantile", True
@@ -125,4 +149,8 @@ def make_rl_data_module(
         query_len=training_args.query_len,
         prompt_postprocessor=prompt_postprocessor,
     )
-    return dict(train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=DataCollatorForStackableDataset())
+    return dict(
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        data_collator=DataCollatorForStackableDataset(),
+    )

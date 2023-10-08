@@ -33,7 +33,10 @@ logger = logging.get_logger(__name__)
 
 class Policy(nn.Module, abc.ABC):
     def __init__(
-        self, args, base_model: transformers.PreTrainedModel, base_tokenizer: transformers.PreTrainedTokenizer
+        self,
+        args,
+        base_model: transformers.PreTrainedModel,
+        base_tokenizer: transformers.PreTrainedTokenizer,
     ):
         super().__init__()
         self.args = args
@@ -58,11 +61,17 @@ class Policy(nn.Module, abc.ABC):
         num_return_sequences=1,
     ) -> Dict[str, Tensor]:
         assert not self.training, "Policy must be in eval model for generation."
-        return self._post_respond(self._respond(queries, query_attn_masks, temperature, num_return_sequences))
+        return self._post_respond(
+            self._respond(queries, query_attn_masks, temperature, num_return_sequences)
+        )
 
     @abc.abstractmethod
     def _respond(
-        self, queries: Tensor, query_attn_masks: Tensor, temperature: Optional[float] = None, num_return_sequences=1
+        self,
+        queries: Tensor,
+        query_attn_masks: Tensor,
+        temperature: Optional[float] = None,
+        num_return_sequences=1,
     ) -> Dict[str, Tensor]:
         raise NotImplementedError
 
@@ -94,9 +103,13 @@ class AutoregressivePolicy(Policy):
         original_logits = outputs.logits[:, -self.args.response_len - 1 : -1]
         logits = original_logits / temperature
         labels = input_ids[:, -self.args.response_len :]
-        logprobs = torch_ops.compute_logprobs(logits, labels, ignore_index=self.base_tokenizer.pad_token_id)
+        logprobs = torch_ops.compute_logprobs(
+            logits, labels, ignore_index=self.base_tokenizer.pad_token_id
+        )
         entropies = -(logits.softmax(dim=-1) * logits.log_softmax(dim=-1)).sum(dim=-1)
-        last_hidden_state = outputs.hidden_states[-1][:, -self.args.response_len - 1 : -1]
+        last_hidden_state = outputs.hidden_states[-1][
+            :, -self.args.response_len - 1 : -1
+        ]
         return dict(
             original_logits=original_logits,
             logits=logits,
@@ -131,12 +144,17 @@ class AutoregressivePolicy(Policy):
             target_size=(sequences.size(0), self.args.response_len),
             value=self.base_tokenizer.pad_token_id,
         )
-        return dict(responses=responses)  # Size (bsz * num_return_sequences, response_len).
+        return dict(
+            responses=responses
+        )  # Size (bsz * num_return_sequences, response_len).
 
 
 class Value(nn.Module, abc.ABC):
     def __init__(
-        self, args, base_model: transformers.PreTrainedModel, base_tokenizer: transformers.PreTrainedTokenizer
+        self,
+        args,
+        base_model: transformers.PreTrainedModel,
+        base_tokenizer: transformers.PreTrainedTokenizer,
     ):
         super().__init__()
         self.args = args
@@ -149,12 +167,16 @@ class Value(nn.Module, abc.ABC):
         self.value_head = value_head.to(next(base_model.parameters()).device)
 
     @abc.abstractmethod
-    def forward(self, queries: Tensor, query_attn_masks: Tensor, responses: Tensor) -> Dict[str, Tensor]:
+    def forward(
+        self, queries: Tensor, query_attn_masks: Tensor, responses: Tensor
+    ) -> Dict[str, Tensor]:
         raise NotImplementedError
 
 
 class AutoregressiveValue(Value):
-    def forward(self, queries: Tensor, query_attn_masks: Tensor, responses: Tensor) -> Dict[str, Tensor]:
+    def forward(
+        self, queries: Tensor, query_attn_masks: Tensor, responses: Tensor
+    ) -> Dict[str, Tensor]:
         sequences = torch.cat([queries, responses], dim=1)
         sequence_attn_masks = sequences.ne(self.base_tokenizer.pad_token_id)
 
@@ -189,13 +211,20 @@ class ActorCritic(nn.Module):
         return {**o1, **o2}
 
     def respond(
-        self, queries: Tensor, query_attn_masks: Tensor, temperature: Optional[float] = None
+        self,
+        queries: Tensor,
+        query_attn_masks: Tensor,
+        temperature: Optional[float] = None,
     ) -> Dict[str, Tensor]:
-        return self.policy.respond(queries=queries, query_attn_masks=query_attn_masks, temperature=temperature)
+        return self.policy.respond(
+            queries=queries, query_attn_masks=query_attn_masks, temperature=temperature
+        )
 
 
 def make_policy_with_base_model(
-    args, base_model: transformers.PreTrainedModel, base_tokenizer: transformers.PreTrainedTokenizer
+    args,
+    base_model: transformers.PreTrainedModel,
+    base_tokenizer: transformers.PreTrainedTokenizer,
 ) -> Policy:
     if base_model.config.is_encoder_decoder:
         raise NotImplementedError

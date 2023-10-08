@@ -18,24 +18,36 @@ def get_alpaca_farm_model_names():
     api = HfApi()
     models = api.list_models(author="tatsu-lab", search="alpaca-farm")
     model_names = [model.modelId for model in models]
-    model_names = [name.replace("tatsu-lab/alpaca-farm-", "").replace("-wdiff", "") for name in model_names]
+    model_names = [
+        name.replace("tatsu-lab/alpaca-farm-", "").replace("-wdiff", "")
+        for name in model_names
+    ]
     return model_names
 
 
 def build_argparse(model_names):
     parser = argparse.ArgumentParser("Download AlpacaFarm models")
     parser.add_argument("--llama-7b-hf-dir", type=str, required=True)
-    parser.add_argument("--alpaca-farm-model-name", choices=model_names + ["all"], default="all", required=True)
+    parser.add_argument(
+        "--alpaca-farm-model-name",
+        choices=model_names + ["all"],
+        default="all",
+        required=True,
+    )
     parser.add_argument("--models-save-dir", default="./pretrained_models", type=str)
     parser.add_argument("--device", default="cpu", type=str)
-    parser.add_argument("--path-to-sft10k", type=str, help="Necessary for reconstructing reward models.")
+    parser.add_argument(
+        "--path-to-sft10k", type=str, help="Necessary for reconstructing reward models."
+    )
     args = parser.parse_args()
     if args.path_to_sft10k is None:
         args.path_to_sft10k = os.path.join(args.models_save_dir, "sft10k")
     return args
 
 
-def load_weight_diff(hf_hub_name, is_reward_model=False, device="cpu", path_to_sft10k=None):
+def load_weight_diff(
+    hf_hub_name, is_reward_model=False, device="cpu", path_to_sft10k=None
+):
     if is_reward_model:
         model_tuned = RewardModel.from_pretrained(
             hf_hub_name,
@@ -46,7 +58,9 @@ def load_weight_diff(hf_hub_name, is_reward_model=False, device="cpu", path_to_s
         )
     else:
         model_tuned = transformers.AutoModelForCausalLM.from_pretrained(
-            hf_hub_name, device_map={"": torch.device(device)}, torch_dtype=torch.float32
+            hf_hub_name,
+            device_map={"": torch.device(device)},
+            torch_dtype=torch.float32,
         )
     tokenizer_tuned = transformers.AutoTokenizer.from_pretrained(hf_hub_name)
     return model_tuned.eval(), tokenizer_tuned
@@ -70,7 +84,9 @@ def load_raw_model(model_dir, device="cpu"):
     tokenizer_raw = transformers.AutoTokenizer.from_pretrained(model_dir)
     if tokenizer_raw.pad_token is None:
         stable_resize_token_embeddings_and_tokenizer(
-            model=model_raw, tokenizer=tokenizer_raw, special_tokens_dict=dict(pad_token="[PAD]")
+            model=model_raw,
+            tokenizer=tokenizer_raw,
+            special_tokens_dict=dict(pad_token="[PAD]"),
         )
     return model_raw.eval(), tokenizer_raw
 
@@ -101,7 +117,11 @@ if __name__ == "__main__":
     model_names = get_alpaca_farm_model_names()
     args = build_argparse(model_names)
 
-    model_names = model_names if args.alpaca_farm_model_name == "all" else [args.alpaca_farm_model_name]
+    model_names = (
+        model_names
+        if args.alpaca_farm_model_name == "all"
+        else [args.alpaca_farm_model_name]
+    )
     for model_name in model_names:
         print("Downloading", model_name)
 
@@ -109,12 +129,16 @@ if __name__ == "__main__":
         is_reward_model = "reward-model" in model_name
         save_dir = os.path.join(args.models_save_dir, model_name)
 
-        model_tuned, tokenizer_tuned = load_weight_diff(hf_hub_name, is_reward_model, args.device, args.path_to_sft10k)
+        model_tuned, tokenizer_tuned = load_weight_diff(
+            hf_hub_name, is_reward_model, args.device, args.path_to_sft10k
+        )
         model_raw, tokenizer_raw = load_raw_model(args.llama_7b_hf_dir, args.device)
         reconstruct_tuned_model(model_tuned, model_raw, is_reward_model)
 
         if not integrity_check(model_tuned, hf_hub_name):
-            print("Model weights integrity check failed. Did you use the latest llama-7b HF weights?")
+            print(
+                "Model weights integrity check failed. Did you use the latest llama-7b HF weights?"
+            )
         model_tuned.save_pretrained(save_dir)
         tokenizer_tuned.save_pretrained(save_dir)
 

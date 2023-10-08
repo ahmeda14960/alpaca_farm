@@ -22,7 +22,9 @@ class OPTDecoderLayerNF(modeling_opt.OPTDecoderLayer):
 class OPTDecoderNF(modeling_opt.OPTDecoder):
     def __init__(self, config: modeling_opt.OPTConfig):
         super().__init__(config)
-        self.layers = nn.ModuleList([OPTDecoderLayerNF(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList(
+            [OPTDecoderLayerNF(config) for _ in range(config.num_hidden_layers)]
+        )
         self.post_init()
 
     def forward(
@@ -116,8 +118,12 @@ def test_decoding():
     tensors = {k: v.to(device) for k, v in tensors.items()}
     print(f'input size: {tensors["input_ids"].shape}')
 
-    model1: transformers.OPTForCausalLM = flash_opt.OPTForCausalLM.from_pretrained(model_name).to(device).eval()
-    model2: transformers.OPTForCausalLM = OPTForCausalLMNF.from_pretrained(model_name).to(device).eval()
+    model1: transformers.OPTForCausalLM = (
+        flash_opt.OPTForCausalLM.from_pretrained(model_name).to(device).eval()
+    )
+    model2: transformers.OPTForCausalLM = (
+        OPTForCausalLMNF.from_pretrained(model_name).to(device).eval()
+    )
 
     with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
         # greedy
@@ -174,7 +180,9 @@ def profile_decoding():
     model_name = "facebook/opt-1.3b"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, cache_dir=constants.DEFAULT_CACHE_DIR)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        model_name, cache_dir=constants.DEFAULT_CACHE_DIR
+    )
     tokenizer.padding_side = "left"
     text = [
         "i have a good ",

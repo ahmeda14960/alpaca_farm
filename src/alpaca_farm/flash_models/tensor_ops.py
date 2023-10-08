@@ -26,7 +26,9 @@ def pad_to_multiples_of_x(tensor: torch.Tensor, x: int = 8):
         tensor = torch.cat(
             [
                 tensor,
-                torch.zeros([pad_len, hidden_size], device=tensor.device, dtype=tensor.dtype),
+                torch.zeros(
+                    [pad_len, hidden_size], device=tensor.device, dtype=tensor.dtype
+                ),
             ],
             dim=0,
         )
@@ -37,10 +39,14 @@ def pad_to_multiples_of_x(tensor: torch.Tensor, x: int = 8):
     return tensor, unpad_x
 
 
-def unpad_input(padded: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, Callable, torch.Tensor, int]:
+def unpad_input(
+    padded: torch.Tensor, attention_mask: torch.Tensor
+) -> tuple[torch.Tensor, Callable, torch.Tensor, int]:
     """Wrapper for unpad_input in official flash-attn."""
     batch_size, padded_seqlen = padded.shape[:2]
-    unpadded, indices, cu_seqlens, max_seqlen = bert_padding.unpad_input(padded, attention_mask)
+    unpadded, indices, cu_seqlens, max_seqlen = bert_padding.unpad_input(
+        padded, attention_mask
+    )
 
     def pad_back(unpadded: torch.Tensor):
         return bert_padding.pad_input(unpadded, indices, batch_size, padded_seqlen)

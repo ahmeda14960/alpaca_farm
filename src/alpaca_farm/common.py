@@ -31,6 +31,8 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import StateDictType
 from transformers.trainer import WEIGHTS_NAME, is_deepspeed_zero3_enabled
 
+# from transformers.integrations import
+
 from . import constants, logging, utils
 from .types import AnyPath, AnyPathOrNone
 
@@ -106,16 +108,23 @@ def make_generative_lm(
 
     if flash_attn and not fp16 and not bf16:
         logger.warning(
-            "Flash attention does not support fp32. Reverting to standard attention.", main_process_only=True
+            "Flash attention does not support fp32. Reverting to standard attention.",
+            main_process_only=True,
         )
         flash_attn = False
 
     if flash_attn and flash_attn_is_installed():
-        from .flash_models import flash_llama
+        if "llama" in model_name_or_path:
+            from .flash_models import flash_llama
 
-        model_cls = flash_llama.LlamaForCausalLM
+            model_cls = flash_llama.LlamaForCausalLM
+        elif "opt" in model_name_or_path:
+            from .flash_models import flash_opt
+
+            model_cls = flash_opt.OPTForCausalLM
     else:
-        model_cls = transformers.LlamaForCausalLM
+        # this needs to be GPT neox! gpt neo is different
+        model_cls = transformers.GPTNeoXForCausalLM
 
     return model_cls.from_pretrained(model_name_or_path, **kwargs)
 
@@ -187,7 +196,9 @@ def safe_save_model_for_hf_trainer(
             if trainer.args.should_save:
                 file = os.path.join(output_dir, WEIGHTS_NAME)
                 if os.path.isfile(file):
-                    logger.warning(f"deepspeed zero3: removing {file}, see zero_to_fp32.py to recover weights")
+                    logger.warning(
+                        f"deepspeed zero3: removing {file}, see zero_to_fp32.py to recover weights"
+                    )
                     os.remove(file)
 
             # now save the real model if stage3_gather_16bit_weights_on_model_save=True
@@ -248,7 +259,9 @@ def flatten_dict(nested, sep=".", postprocess_fn=lambda *args: args):
     return flat
 
 
-def unpack_dict(d: Dict, keys: Sequence[str], return_type: type = tuple) -> Union[Sequence, Dict]:
+def unpack_dict(
+    d: Dict, keys: Sequence[str], return_type: type = tuple
+) -> Union[Sequence, Dict]:
     if return_type in (tuple, list):
         return return_type(d[key] for key in keys)
     elif return_type == dict:
@@ -266,7 +279,7 @@ def merge_dict(dicts: Sequence[dict], merge_fn: Callable = lambda *args: args) -
 
 def model_name_or_path_exists(model_name_or_path: AnyPath) -> bool:
     try:
-        transformers.PretrainedConfig.get_config_dict(model_name_or_path)
+        out = transformers.PretrainedConfig.get_config_dict(model_name_or_path)
     except OSError:
         return os.path.exists(Path(model_name_or_path) / "trainer_state.json")
     return True
@@ -282,7 +295,10 @@ def get_transformer_hidden_size(model: transformers.PreTrainedModel):
     else:
         # Hack to deal with the fact that transformers library changed the LLaMA model name.
         llama_cls = getattr(
-            transformers, "LLaMAForCausalLM" if hasattr(transformers, "LLaMAForCausalLM") else "LlamaForCausalLM"
+            transformers,
+            "LLaMAForCausalLM"
+            if hasattr(transformers, "LLaMAForCausalLM")
+            else "LlamaForCausalLM",
         )
         if isinstance(model, llama_cls):
             hidden_size_attr_name = "hidden_size"
@@ -292,9 +308,13 @@ def get_transformer_hidden_size(model: transformers.PreTrainedModel):
     return getattr(model.config, hidden_size_attr_name)
 
 
-def prepare_inputs(data: Union[torch.Tensor, Any], device: Union[str, int, torch.device]) -> Union[torch.Tensor, Any]:
+def prepare_inputs(
+    data: Union[torch.Tensor, Any], device: Union[str, int, torch.device]
+) -> Union[torch.Tensor, Any]:
     if isinstance(data, Mapping):
-        return type(data)({k: prepare_inputs(v, device) for k, v in data.items()})  # noqa
+        return type(data)(
+            {k: prepare_inputs(v, device) for k, v in data.items()}
+        )  # noqa
     elif isinstance(data, (tuple, list)):
         return type(data)(prepare_inputs(v, device) for v in data)
     elif isinstance(data, torch.Tensor):
@@ -302,22 +322,30 @@ def prepare_inputs(data: Union[torch.Tensor, Any], device: Union[str, int, torch
     return data
 
 
-def cast_with_native_amp(func: Callable, mixed_precision: Optional[str] = None) -> Callable:
+def cast_with_native_amp(
+    func: Callable, mixed_precision: Optional[str] = None
+) -> Callable:
     """Almost like how huggingface accelerate cast `model.forward`."""
     if mixed_precision not in ("fp16", "bf16"):
-        logger.warning(f"Unknown mixed precision mode: {mixed_precision}, falling back to fp32.")
+        logger.warning(
+            f"Unknown mixed precision mode: {mixed_precision}, falling back to fp32."
+        )
         return func
 
     if mixed_precision == "fp16" and is_torch_version(">=", "1.10"):
         output_func = torch.cuda.amp.autocast(dtype=torch.float16)(func)
     else:
         device_type = "cuda" if torch.cuda.is_available() else "cpu"
-        output_func = torch.autocast(device_type=device_type, dtype=torch.bfloat16)(func)
+        output_func = torch.autocast(device_type=device_type, dtype=torch.bfloat16)(
+            func
+        )
     output_func = convert_outputs_to_fp32(output_func)
     return output_func
 
 
-def prepare_model_for_custom_fn(model: nn.Module, fn_name: str, accelerator: accelerate.Accelerator) -> nn.Module:
+def prepare_model_for_custom_fn(
+    model: nn.Module, fn_name: str, accelerator: accelerate.Accelerator
+) -> nn.Module:
     """Wrap a custom function of a model with the right mixed precision context.
 
     This function should be run on *raw* model, i.e., before wrapped into DDP or FSDP.
@@ -329,6 +357,8 @@ def prepare_model_for_custom_fn(model: nn.Module, fn_name: str, accelerator: acc
         setattr(model, original_fn_name, original_fn)
 
         # New set function.
-        wrapped_fn = cast_with_native_amp(original_fn, mixed_precision=accelerator.mixed_precision)
+        wrapped_fn = cast_with_native_amp(
+            original_fn, mixed_precision=accelerator.mixed_precision
+        )
         setattr(model, fn_name, wrapped_fn)
     return model

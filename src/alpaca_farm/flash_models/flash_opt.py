@@ -17,11 +17,11 @@ from typing import Callable, List, Optional, Tuple, Union
 import einops
 import torch
 import transformers
-from flash_attn.flash_attn_interface import flash_attn_unpadded_func
+from flash_attn.flash_attn_interface import flash_attn_varlen_func
 from torch import nn
 from transformers.models.opt import modeling_opt
 from transformers.utils import logging
-
+from copy import deepcopy
 from . import apex_patch, tensor_ops
 
 logger = logging.get_logger(__name__)
@@ -43,18 +43,24 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
         use_cache=False,
     ):
         residual = hidden_states
-        hidden_states = apex_patch.apex_layernorm(self.self_attn_layer_norm, hidden_states)
+        hidden_states = apex_patch.apex_layernorm(
+            self.self_attn_layer_norm, hidden_states
+        )
         query = self.self_attn.q_proj(hidden_states)
         key = self.self_attn.k_proj(hidden_states)
         value = self.self_attn.v_proj(hidden_states)
 
         num_heads, head_dim = self.self_attn.num_heads, self.self_attn.head_dim
-        if past_key_value is None:  # hidden_states should be in unpadded format to run flash-attn.
+        if (
+            past_key_value is None
+        ):  # hidden_states should be in unpadded format to run flash-attn.
             query, key, value = tuple(
-                einops.rearrange(tensor, "nnz (h d) -> nnz h d", h=num_heads, d=head_dim)
+                einops.rearrange(
+                    tensor, "nnz (h d) -> nnz h d", h=num_heads, d=head_dim
+                )
                 for tensor in (query, key, value)
             )
-            hidden_states = flash_attn_unpadded_func(
+            hidden_states = flash_attn_varlen_func(
                 q=query,
                 k=key,
                 v=value,
@@ -72,9 +78,15 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
             key = torch.cat([past_key_value[0], key], dim=1)
             value = torch.cat([past_key_value[1], value], dim=1)
 
-            query_states = einops.rearrange(query, "b s (h d) -> (b h) s d", h=num_heads, d=head_dim)
-            key_states = einops.rearrange(key, "b l (h d) -> (b h) l d", h=num_heads, d=head_dim)
-            value_states = einops.rearrange(value, "b l (h d) -> (b h) l d", h=num_heads, d=head_dim)
+            query_states = einops.rearrange(
+                query, "b s (h d) -> (b h) s d", h=num_heads, d=head_dim
+            )
+            key_states = einops.rearrange(
+                key, "b l (h d) -> (b h) l d", h=num_heads, d=head_dim
+            )
+            value_states = einops.rearrange(
+                value, "b l (h d) -> (b h) l d", h=num_heads, d=head_dim
+            )
 
             attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
             attn_weights = (
@@ -84,13 +96,19 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
             )
             attn_weights = einops.rearrange(attn_weights, "b h s l -> (b h) s l")
             if attn_weights.dtype == torch.float16:
-                attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(torch.float16)
+                attn_weights = nn.functional.softmax(
+                    attn_weights, dim=-1, dtype=torch.float32
+                ).to(torch.float16)
             else:
                 attn_weights = nn.functional.softmax(attn_weights, dim=-1)
 
-            attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
+            attn_probs = nn.functional.dropout(
+                attn_weights, p=self.dropout, training=self.training
+            )
             hidden_states = torch.bmm(attn_probs, value_states)
-            hidden_states = einops.rearrange(hidden_states, "(b h) s d -> b s (h d)", h=num_heads, d=head_dim)
+            hidden_states = einops.rearrange(
+                hidden_states, "(b h) s d -> b s (h d)", h=num_heads, d=head_dim
+            )
 
             # Below requires pytorch 2.0. Installing pytorch 2.0 however may break other packages.
             # Only migrate when things become more stable.
@@ -105,7 +123,9 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
             # hidden_states = einops.rearrange(hidden_states, "b h s d -> b s (h d)")
 
         hidden_states = self.self_attn.out_proj(hidden_states)
-        hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = nn.functional.dropout(
+            hidden_states, p=self.dropout, training=self.training
+        )
         hidden_states = residual + hidden_states
 
         # Fully Connected
@@ -114,14 +134,21 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
         hidden_states = self.fc1(hidden_states)
         hidden_states = self.activation_fn(hidden_states)
         hidden_states = self.fc2(hidden_states)
-        hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = nn.functional.dropout(
+            hidden_states, p=self.dropout, training=self.training
+        )
         hidden_states = residual + hidden_states
         outputs = (hidden_states,)
 
         if use_cache:
             if past_key_value is None:
                 key, value = tuple(
-                    einops.rearrange(pad_back(tensor), "b s h d -> b s (h d)", h=num_heads, d=head_dim)
+                    einops.rearrange(
+                        pad_back(tensor),
+                        "b s h d -> b s (h d)",
+                        h=num_heads,
+                        d=head_dim,
+                    )
                     for tensor in (key, value)
                 )
             present_key_value = (key, value)  # (bsz, seqlen+1, hidden_size).
@@ -133,7 +160,9 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
 class OPTDecoder(modeling_opt.OPTDecoder):
     def __init__(self, config: modeling_opt.OPTConfig):
         super().__init__(config)
-        self.layers = nn.ModuleList([OPTDecoderLayer(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList(
+            [OPTDecoderLayer(config) for _ in range(config.num_hidden_layers)]
+        )
         self.post_init()
 
     def forward(
@@ -148,12 +177,20 @@ class OPTDecoder(modeling_opt.OPTDecoder):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, transformers.models.opt.modeling_opt.BaseModelOutputWithPast]:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (
+            output_attentions
+            if output_attentions is not None
+            else self.config.output_attentions
+        )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         # This simplified fast implementation only supports a subset of configurations.
         # We also ignore use_cache, but we don't assert that because it's True at training time
@@ -164,15 +201,18 @@ class OPTDecoder(modeling_opt.OPTDecoder):
         assert head_mask is None
         assert self.gradient_checkpointing is False
         assert inputs_embeds is None
+        # TODO: this is getting reinitalized... why?
         assert self.final_layer_norm is not None
-        assert self.project_in is None
-        assert self.project_out is None
+        # assert self.project_in is None
+        # assert self.project_out is None
         assert self.layerdrop == 0
         for layer in self.layers:
             assert layer.do_layer_norm_before is True
 
         # past_key_values is a list of tuples (key, value). key/value each of size (bsz, seqlen, hidden_size).
-        past_key_values_length = past_key_values[0][0].shape[1] if past_key_values is not None else 0
+        past_key_values_length = (
+            past_key_values[0][0].shape[1] if past_key_values is not None else 0
+        )
 
         # Embed inputs and positions
         input_ids = input_ids.view(-1, input_ids.shape[-1])
@@ -186,13 +226,28 @@ class OPTDecoder(modeling_opt.OPTDecoder):
 
         if past_key_values_length == 0:
             # Unpad hidden states: (bsz, seqlen, hidden_size) -> (total_nnz, hidden_size)
-            hidden_states, pad_back, cu_seqlens_q, max_seqlen_q = tensor_ops.unpad_input(hidden_states, attention_mask)
+            (
+                hidden_states,
+                pad_back,
+                cu_seqlens_q,
+                max_seqlen_q,
+            ) = tensor_ops.unpad_input(hidden_states, attention_mask)
             attention_mask_k = None
         else:
-            hidden_states, pad_back, cu_seqlens_q, max_seqlen_q = hidden_states, lambda x: x, None, None
+            hidden_states, pad_back, cu_seqlens_q, max_seqlen_q = (
+                hidden_states,
+                lambda x: x,
+                None,
+                None,
+            )
             attention_mask_k = torch.zeros(
-                size=attention_mask.size(), dtype=inputs_embeds.dtype, device=inputs_embeds.device
-            ).masked_fill(~attention_mask.bool(), torch.tensor(torch.finfo(inputs_embeds.dtype).min))
+                size=attention_mask.size(),
+                dtype=inputs_embeds.dtype,
+                device=inputs_embeds.device,
+            ).masked_fill(
+                ~attention_mask.bool(),
+                torch.tensor(torch.finfo(inputs_embeds.dtype).min),
+            )
 
         next_decoder_cache = () if use_cache else None
         all_hidden_states = () if output_hidden_states else None
@@ -200,7 +255,9 @@ class OPTDecoder(modeling_opt.OPTDecoder):
         for idx, layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (pad_back(hidden_states),)
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
+            past_key_value = (
+                past_key_values[idx] if past_key_values is not None else None
+            )
             layer_outputs = layer(
                 hidden_states=hidden_states,
                 pad_back=pad_back,
@@ -226,7 +283,9 @@ class OPTDecoder(modeling_opt.OPTDecoder):
                 past_key_values=next_cache,
                 hidden_states=all_hidden_states,
             )
-        return tuple(v for v in (hidden_states, next_cache, all_hidden_states) if v is not None)
+        return tuple(
+            v for v in (hidden_states, next_cache, all_hidden_states) if v is not None
+        )
 
 
 class OPTModel(modeling_opt.OPTModel):
@@ -238,6 +297,13 @@ class OPTModel(modeling_opt.OPTModel):
 
 class OPTForCausalLM(modeling_opt.OPTForCausalLM):
     def __init__(self, config):
+        # copy_config = deepcopy(config)
+        # import ipdb; ipdb.set_trace()
+        # copy_config._remove_final_layer_norm = False
+        # copy_config.do_layer_norm_before = True
+        # print(copy_config)
+        # super().__init__(copy_config)
+        # self.model = OPTModel(copy_config)
         super().__init__(config)
         self.model = OPTModel(config)
         self.post_init()

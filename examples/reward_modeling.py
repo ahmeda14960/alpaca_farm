@@ -38,13 +38,21 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     dataset_path: str = field(default="tatsu-lab/alpaca_farm")
-    dataset_name: Literal["alpaca_human_preference", "alpaca_gpt4_preference", "alpaca_noisy_multi_preference"] = field(
+    dataset_name: Literal[
+        "alpaca_human_preference",
+        "alpaca_gpt4_preference",
+        "alpaca_noisy_multi_preference",
+    ] = field(
         default="alpaca_noisy_multi_preference",
-        metadata={"help": "Name of the dataset. Fetches the human or GPT-4 preference data."},
+        metadata={
+            "help": "Name of the dataset. Fetches the human or GPT-4 preference data."
+        },
     )
     eval_size: int = field(
         default=500,
-        metadata={"help": "Number of examples to split out from training to use for evaluation."},
+        metadata={
+            "help": "Number of examples to split out from training to use for evaluation."
+        },
     )
     prompt_dict_path: str = field(
         default=pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json",
@@ -95,7 +103,9 @@ class TrainingArguments(transformers.TrainingArguments):
             "Ending with EOS might help the reward model realize it's time to predict."
         },
     )
-    resume_from_checkpoint: bool = field(default=False, metadata={"help": "If True, loads from last check point."})
+    resume_from_checkpoint: bool = field(
+        default=False, metadata={"help": "If True, loads from last check point."}
+    )
     use_fast_tokenizer: bool = field(
         default=False,
         metadata={
@@ -107,7 +117,9 @@ class TrainingArguments(transformers.TrainingArguments):
 
 
 def main():
-    parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
+    parser = transformers.HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments)
+    )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     os.environ["WANDB_PROJECT"] = training_args.wandb_project
 
@@ -127,7 +139,9 @@ def main():
         low_cpu_mem_usage = True
 
     with ctx_mgr:
-        config = reward_model.RewardConfig(backbone_model_name_or_path=model_args.model_name_or_path)
+        config = reward_model.RewardConfig(
+            backbone_model_name_or_path=model_args.model_name_or_path
+        )
         model = reward_model.RewardModel(
             flash_attn=training_args.flash_attn,
             fp16=training_args.fp16,
@@ -161,12 +175,17 @@ def main():
     )
 
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
-    logger.warning("hooray! training finished successfully! now on to model saving.", main_process_only=True)
+    logger.warning(
+        "hooray! training finished successfully! now on to model saving.",
+        main_process_only=True,
+    )
 
     trainer.evaluate()
 
     trainer.save_state()
-    common.safe_save_model_for_hf_trainer(trainer=trainer, output_dir=training_args.output_dir)
+    common.safe_save_model_for_hf_trainer(
+        trainer=trainer, output_dir=training_args.output_dir
+    )
     logger.warning("hooray again! model saving worked.", main_process_only=True)
 
 

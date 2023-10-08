@@ -37,14 +37,18 @@ class Trainer(transformers.Trainer):
         )
         outputs = model(input_ids=input_ids_flat, attention_mask=attention_mask_flat)
         rewards_flat = outputs.rewards
-        rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
+        rewards = einops.rearrange(
+            rewards_flat, "(b c) -> b c", c=num_candidates
+        )  # Size: (bsz, num_candidates).
 
         rewards_0, rewards_1 = tuple(
             torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
         )  # Size: (bsz, num_pairs).
         logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
         # Type casting of `choice` is due to amp.autocast context manager.
-        loss = F.binary_cross_entropy_with_logits(logits, choice.to(logits.dtype), reduction="mean")
+        loss = F.binary_cross_entropy_with_logits(
+            logits, choice.to(logits.dtype), reduction="mean"
+        )
         return (loss, dict(logits=logits)) if return_outputs else loss
 
 
@@ -56,8 +60,12 @@ def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     accuracy = predictions.eq(labels).float().mean().item()
     label_positive_rate = (labels == 1).float().mean().item()
     positive_rate = (predictions == 1).float().mean().item()
-    true_positive_rate = (predictions * labels).float().sum().item() / labels.sum().item()
-    false_positive_rate = (predictions * (1 - labels)).float().sum().item() / (1 - labels).sum().item()
+    true_positive_rate = (
+        predictions * labels
+    ).float().sum().item() / labels.sum().item()
+    false_positive_rate = (predictions * (1 - labels)).float().sum().item() / (
+        1 - labels
+    ).sum().item()
     return dict(
         accuracy=accuracy,
         label_positive_rate=label_positive_rate,

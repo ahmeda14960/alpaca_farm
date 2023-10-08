@@ -29,7 +29,12 @@ except ImportError as e:
 def apex_layernorm(ln_module, input_):
     if apex_is_installed:
         return apex.normalization.fused_layer_norm.FusedLayerNormAffineFunction.apply(
-            input_, ln_module.weight, ln_module.bias, ln_module.normalized_shape, ln_module.eps
+            input_,
+            ln_module.weight,
+            ln_module.bias,
+            ln_module.normalized_shape,
+            ln_module.eps,
+            # False, # save input mean for gradient computation or not (memory usage vs speed)
         )
     else:
         return ln_module(input_)
@@ -38,7 +43,10 @@ def apex_layernorm(ln_module, input_):
 def apex_rmsnorm(ln_module, input_):
     if apex_is_installed:
         return apex.normalization.fused_layer_norm.FusedRMSNormAffineFunction.apply(
-            input_, ln_module.weight, ln_module.weight.size(), ln_module.variance_epsilon
+            input_,
+            ln_module.weight,
+            ln_module.weight.size(),
+            ln_module.variance_epsilon,
         )
     else:
         return ln_module(input_)

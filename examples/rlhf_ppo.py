@@ -45,10 +45,14 @@ def main():
         init_kwargs={"wandb": {"name": training_args.run_name}},
         config=training_args.__dict__,
     )
-    logger.warning(accelerator.state, main_process_only=False)  # Each process log their own state.
+    logger.warning(
+        accelerator.state, main_process_only=False
+    )  # Each process log their own state.
 
     tokenizer: transformers.PreTrainedTokenizer = make_tokenizer(args=training_args)
-    model_module: dict = make_models(tokenizer=tokenizer, args=training_args, accelerator=accelerator)
+    model_module: dict = make_models(
+        tokenizer=tokenizer, args=training_args, accelerator=accelerator
+    )
     data_module: dict = data_utils.make_rl_data_module(
         tokenizer=tokenizer, data_args=data_args, training_args=training_args
     )

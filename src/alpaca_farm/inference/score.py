@@ -40,12 +40,20 @@ def score_sequences_with_huggingface_given_model(
     tf32=False,
     divide_work=True,
 ):
-    torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = tf32  # noqa
+    torch.backends.cuda.matmul.allow_tf32 = (
+        torch.backends.cudnn.allow_tf32
+    ) = tf32  # noqa
 
     local_rank, world_size = distributed_utils.setup()
-    device = torch.device("cuda", local_rank) if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.device("cuda", local_rank)
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
 
-    model.forward = common.cast_with_native_amp(model.forward, mixed_precision=mixed_precision)
+    model.forward = common.cast_with_native_amp(
+        model.forward, mixed_precision=mixed_precision
+    )
     logger.warning(f"mixed_precision = {mixed_precision}")
 
     sequences = sequences[:max_instances]
@@ -56,8 +64,12 @@ def score_sequences_with_huggingface_given_model(
         batch_size = per_device_batch_size * world_size
     else:
         batch_size = per_device_batch_size
-    new_data_size = batch_size * int(math.ceil(ori_data_size / batch_size))  # Nearest multiple.
-    new_sequences = list(sequences) + [sequences[-1]] * (new_data_size - ori_data_size)  # Pad with the last prompt.
+    new_data_size = batch_size * int(
+        math.ceil(ori_data_size / batch_size)
+    )  # Nearest multiple.
+    new_sequences = list(sequences) + [sequences[-1]] * (
+        new_data_size - ori_data_size
+    )  # Pad with the last prompt.
 
     return_rewards = []
     for batch_idx, start_idx in tqdm.tqdm(
@@ -68,7 +80,11 @@ def score_sequences_with_huggingface_given_model(
     ):
         batch = new_sequences[start_idx : start_idx + batch_size]
         if world_size > 1 and divide_work:
-            local_batch = batch[local_rank * per_device_batch_size : (local_rank + 1) * per_device_batch_size]
+            local_batch = batch[
+                local_rank
+                * per_device_batch_size : (local_rank + 1)
+                * per_device_batch_size
+            ]
         else:
             local_batch = batch
 
@@ -80,7 +96,9 @@ def score_sequences_with_huggingface_given_model(
             truncation=True,
         )
         source = common.prepare_inputs(source, device=device)
-        rewards = model(input_ids=source.input_ids, attention_mask=source.attention_mask).rewards
+        rewards = model(
+            input_ids=source.input_ids, attention_mask=source.attention_mask
+        ).rewards
         if world_size > 1 and divide_work:
             rewards = distributed_utils.all_gather_and_cat(rewards, dim=0)
         return_rewards.extend(rewards.tolist())
@@ -164,7 +182,9 @@ def rerank_sequences_with_huggingface(
         The second is a nested sequence of integers. Each inner sequence contains the indices of the top-k samples.
     """
     sequences = sequences[:max_instances]
-    flat_sequences = [sequence_i_j for sequence_i in sequences for sequence_i_j in sequence_i]
+    flat_sequences = [
+        sequence_i_j for sequence_i in sequences for sequence_i_j in sequence_i
+    ]
     rewards = score_sequences_with_huggingface(
         sequences=flat_sequences,
         model_name_or_path=model_name_or_path,
@@ -174,8 +194,13 @@ def rerank_sequences_with_huggingface(
         tf32=tf32,
         flash_attn=flash_attn,
     )
-    rewards = einops.rearrange(torch.tensor(rewards), "(b m) -> b m", m=len(sequences[0]))
+    rewards = einops.rearrange(
+        torch.tensor(rewards), "(b m) -> b m", m=len(sequences[0])
+    )
     # Nested list of "size" (data_size, num_options).
     top_indices = rewards.topk(rerank_top_k, dim=1).indices.tolist()
-    top_sequences = [[sequence[i] for i in top_index] for sequence, top_index in utils.zip_(sequences, top_indices)]
+    top_sequences = [
+        [sequence[i] for i in top_index]
+        for sequence, top_index in utils.zip_(sequences, top_indices)
+    ]
     return top_sequences, top_indices

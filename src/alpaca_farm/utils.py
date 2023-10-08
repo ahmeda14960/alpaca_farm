@@ -131,7 +131,9 @@ def stable_resize_token_embeddings_and_tokenizer(
     stable_resize_token_embeddings(model, len(tokenizer))
 
 
-def stable_resize_token_embeddings(model: transformers.PreTrainedModel, target_size: int, jitter_new_embeddings=False):
+def stable_resize_token_embeddings(
+    model: transformers.PreTrainedModel, target_size: int, jitter_new_embeddings=False
+):
     num_new_tokens = target_size - model.get_input_embeddings().weight.size(0)
     model.resize_token_embeddings(target_size)
 
@@ -143,11 +145,17 @@ def stable_resize_token_embeddings(model: transformers.PreTrainedModel, target_s
             embedding_avg = embedding_data[:-num_new_tokens].mean(dim=0, keepdim=True)
             embedding_data[-num_new_tokens:] = embedding_avg
             if jitter_new_embeddings:
-                embedding_std = embedding_data[:-num_new_tokens].std(dim=0, keepdim=True)
+                embedding_std = embedding_data[:-num_new_tokens].std(
+                    dim=0, keepdim=True
+                )
                 # The random tensor must be of the same shape as the new embeddings.
-                embedding_data[-num_new_tokens:] += torch.randn_like(embedding_data[-num_new_tokens:]) * embedding_std
+                embedding_data[-num_new_tokens:] += (
+                    torch.randn_like(embedding_data[-num_new_tokens:]) * embedding_std
+                )
 
-        input_embeddings = model.get_input_embeddings()  # Must grab this again after resize.
+        input_embeddings = (
+            model.get_input_embeddings()
+        )  # Must grab this again after resize.
         output_embeddings = model.get_output_embeddings()
         # It doesn't matter if there's weight sharing or not; with sharing, the second init will overwrite the first.
         for embeddings in (input_embeddings, output_embeddings):

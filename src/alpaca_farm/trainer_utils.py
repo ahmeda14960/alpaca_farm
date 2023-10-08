@@ -26,7 +26,9 @@ from . import logging
 logger = logging.get_logger(__name__)
 
 
-def create_optimizer(args, model: nn.Module, optimizer: Optional[optim.Optimizer] = None):
+def create_optimizer(
+    args, model: nn.Module, optimizer: Optional[optim.Optimizer] = None
+):
     """Create optimizer for trainer.
 
     This is detached version of the `Trainer.create_optimizer` method.
@@ -42,12 +44,18 @@ def create_optimizer(args, model: nn.Module, optimizer: Optional[optim.Optimizer
         decay_parameters = [name for name in decay_parameters if "bias" not in name]
         optimizer_grouped_parameters = [
             {
-                "params": [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (n in decay_parameters and p.requires_grad)
+                ],
                 "weight_decay": args.weight_decay,
             },
             {
                 "params": [
-                    p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (n not in decay_parameters and p.requires_grad)
                 ],
                 "weight_decay": 0.0,
             },
@@ -64,9 +72,13 @@ def create_optimizer(args, model: nn.Module, optimizer: Optional[optim.Optimizer
             skipped = 0
             for module in opt_model.modules():
                 if isinstance(module, nn.Embedding):
-                    skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                    skipped += sum(
+                        {p.data_ptr(): p.numel() for p in module.parameters()}.values()
+                    )
                     print(f"skipped {module}: {skipped / 2 ** 20}M params")
-                    manager.register_module_override(module, "weight", {"optim_bits": 32})
+                    manager.register_module_override(
+                        module, "weight", {"optim_bits": 32}
+                    )
                     logger.debug(f"bitsandbytes: will optimize {module} in fp32")
             print(f"skipped: {skipped / 2 ** 20}M params")
 

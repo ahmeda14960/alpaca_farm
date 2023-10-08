@@ -23,7 +23,9 @@ class LLaMADecoderLayerNF(modeling_llama.LlamaDecoderLayer):
 class LLaMAModelNF(transformers.LlamaModel):
     def __init__(self, config):
         super().__init__(config)
-        self.layers = nn.ModuleList([LLaMADecoderLayerNF(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList(
+            [LLaMADecoderLayerNF(config) for _ in range(config.num_hidden_layers)]
+        )
 
     def forward(self, *args, **kwargs):
         outputs = super().forward(*args, **kwargs)
@@ -37,7 +39,9 @@ class LLaMAForCausalLMNF(transformers.LlamaForCausalLM):
         self.model = LLaMAModelNF(config)
 
 
-def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype, past_key_values_length: int = 0):
+def _make_causal_mask(
+    input_ids_shape: torch.Size, dtype: torch.dtype, past_key_values_length: int = 0
+):
     """
     Make causal mask used for bi-directional self-attention.
     """
@@ -48,8 +52,12 @@ def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype, past_key_
     mask = mask.to(dtype)
 
     if past_key_values_length > 0:
-        mask = torch.cat([torch.zeros(tgt_len, past_key_values_length, dtype=dtype), mask], dim=-1)
-    return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
+        mask = torch.cat(
+            [torch.zeros(tgt_len, past_key_values_length, dtype=dtype), mask], dim=-1
+        )
+    return mask[None, None, :, :].expand(
+        bsz, 1, tgt_len, tgt_len + past_key_values_length
+    )
 
 
 def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
@@ -63,25 +71,33 @@ def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] 
 
     inverted_mask = 1.0 - expanded_mask
 
-    return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
+    return inverted_mask.masked_fill(
+        inverted_mask.to(torch.bool), torch.finfo(dtype).min
+    )
 
 
-def _prepare_decoder_attention_mask(attention_mask, input_shape, inputs_embeds, past_key_values_length):
+def _prepare_decoder_attention_mask(
+    attention_mask, input_shape, inputs_embeds, past_key_values_length
+):
     # create causal mask
     # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
     combined_attention_mask = None
     if input_shape[-1] > 1:
         combined_attention_mask = _make_causal_mask(
-            input_shape, inputs_embeds.dtype, past_key_values_length=past_key_values_length
+            input_shape,
+            inputs_embeds.dtype,
+            past_key_values_length=past_key_values_length,
         ).to(inputs_embeds.device)
 
     if attention_mask is not None:
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-        expanded_attn_mask = _expand_mask(attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]).to(
-            inputs_embeds.device
-        )
+        expanded_attn_mask = _expand_mask(
+            attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
+        ).to(inputs_embeds.device)
         combined_attention_mask = (
-            expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
+            expanded_attn_mask
+            if combined_attention_mask is None
+            else expanded_attn_mask + combined_attention_mask
         )
 
     return combined_attention_mask
@@ -96,8 +112,12 @@ def test_llama_attention(dtype=torch.float16):
     batch_size, original_seqlen, num_heads, head_dim = 4, 13, 8, 32
     hidden_size = num_heads * head_dim
 
-    seqlens = torch.randint(low=1, high=original_seqlen, size=(batch_size,), device=device)
-    attention_mask = torch.arange(original_seqlen, device=device)[None, :] < seqlens[:, None]
+    seqlens = torch.randint(
+        low=1, high=original_seqlen, size=(batch_size,), device=device
+    )
+    attention_mask = (
+        torch.arange(original_seqlen, device=device)[None, :] < seqlens[:, None]
+    )
 
     # TODO(lxuechen): Test with past_key_values_length.
     position_ids = attention_mask.long().cumsum(-1) - 1
@@ -105,14 +125,20 @@ def test_llama_attention(dtype=torch.float16):
     flash_position_ids = torch.cat(
         [
             this_position_ids[this_is_selected]
-            for this_position_ids, this_is_selected in utils.zip_(position_ids, is_selected)
+            for this_position_ids, this_is_selected in utils.zip_(
+                position_ids, is_selected
+            )
         ]
     )
     nonflash_position_ids = position_ids.masked_fill_(attention_mask == 0, 1)
 
-    hidden_states = torch.randn(batch_size, original_seqlen, hidden_size, device=device, dtype=dtype)
+    hidden_states = torch.randn(
+        batch_size, original_seqlen, hidden_size, device=device, dtype=dtype
+    )
 
-    hidden_states_unpad, indices, cu_seqlens, max_s = unpad_input(hidden_states, attention_mask)
+    hidden_states_unpad, indices, cu_seqlens, max_s = unpad_input(
+        hidden_states, attention_mask
+    )
     expanded_attention_mask = _prepare_decoder_attention_mask(
         attention_mask, (batch_size, original_seqlen), hidden_states, 0
     )
@@ -268,7 +294,11 @@ def test_forward(dtype=torch.bfloat16, padding_side="left"):
         )
 
     tensors = tokenizer(
-        ["i have a good ", "this is a very long sentence that is very long and ", "what type of food do you like?"],
+        [
+            "i have a good ",
+            "this is a very long sentence that is very long and ",
+            "what type of food do you like?",
+        ],
         return_tensors="pt",
         padding=True,
     )
@@ -286,7 +316,9 @@ def test_forward(dtype=torch.bfloat16, padding_side="left"):
     # Error accumulates! The diff for later hidden states is much larger.
     atol = 1e-2 if dtype == torch.float16 else 1e-1
     rtol = 0
-    for layer_idx, (h1, h2) in enumerate(utils.zip_(out1.hidden_states, out2.hidden_states)):
+    for layer_idx, (h1, h2) in enumerate(
+        utils.zip_(out1.hidden_states, out2.hidden_states)
+    ):
         h1, h2 = tuple(clear_padded(tensor) for tensor in (h1, h2))
         if not torch.allclose(h1, h2, atol=atol, rtol=rtol):
             print(

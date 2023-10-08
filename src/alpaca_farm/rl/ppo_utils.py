@@ -52,7 +52,10 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     truncate_after: Optional[int] = field(
-        default=None, metadata={"help": "Truncate after this number of tokens. Prevents early truncation."}
+        default=None,
+        metadata={
+            "help": "Truncate after this number of tokens. Prevents early truncation."
+        },
     )
     penalty_reward_value: float = field(
         default=-1.0,
@@ -86,9 +89,13 @@ class TrainingArguments(transformers.TrainingArguments):
     target_kl: float = field(default=6.0)
     k_beta: float = field(default=0.1)
     adaptive_kl: bool = field(default=False)
-    eval_batches: int = field(default=sys.maxsize, metadata={"help": "Maximum number of batches to evaluate on."})
+    eval_batches: int = field(
+        default=sys.maxsize,
+        metadata={"help": "Maximum number of batches to evaluate on."},
+    )
     init_value_with_reward: bool = field(
-        default=True, metadata={"help": "Initialize the value model with the reward model."}
+        default=True,
+        metadata={"help": "Initialize the value model with the reward model."},
     )
     save_steps_extra: Optional[str] = field(
         default=None,
@@ -115,17 +122,22 @@ class TrainingArguments(transformers.TrainingArguments):
         # super().__post_init__()
 
         if self.tf32:  # super().__post_init__() actually does this.
-            torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True  # noqa
+            torch.backends.cuda.matmul.allow_tf32 = (
+                torch.backends.cudnn.allow_tf32
+            ) = True  # noqa
 
         world_size = distributed_utils.get_world_size()
 
         # Checks on rollout_batch_size only matter for PPO.
-        assert self.rollout_batch_size >= self.rollout_per_device_batch_size * world_size, (
+        assert (
+            self.rollout_batch_size >= self.rollout_per_device_batch_size * world_size
+        ), (
             "rollout_batch_size is smaller than rollout_per_device_batch_size * world_size. "
             "Increase the former or decrease the latter to fix this."
         )
         assert (
-            self.rollout_batch_size % (self.rollout_per_device_batch_size * world_size) == 0
+            self.rollout_batch_size % (self.rollout_per_device_batch_size * world_size)
+            == 0
         ), "rollout_batch_size is not a multiple of rollout_per_device_batch_size * world_size. "
 
         assert self.step_batch_size >= self.step_per_device_batch_size * world_size, (
@@ -142,8 +154,12 @@ class TrainingArguments(transformers.TrainingArguments):
             f"\trollout_per_device_batch_size: {self.rollout_per_device_batch_size}\n"
             f"\tworld_size: {world_size}\n",
         )
-        assert (self.rollout_batch_size // self.rollout_per_device_batch_size) % world_size == 0
-        self.rollout_accumulation_steps = self.rollout_batch_size // self.rollout_per_device_batch_size // world_size
+        assert (
+            self.rollout_batch_size // self.rollout_per_device_batch_size
+        ) % world_size == 0
+        self.rollout_accumulation_steps = (
+            self.rollout_batch_size // self.rollout_per_device_batch_size // world_size
+        )
 
         logger.warning(
             f"Step stats:\n"
@@ -151,8 +167,12 @@ class TrainingArguments(transformers.TrainingArguments):
             f"\tstep_per_device_batch_size: {self.step_per_device_batch_size}\n"
             f"\tworld_size: {world_size}\n",
         )
-        assert (self.step_batch_size // self.step_per_device_batch_size) % world_size == 0
-        self.gradient_accumulation_steps = self.step_batch_size // self.step_per_device_batch_size // world_size
+        assert (
+            self.step_batch_size // self.step_per_device_batch_size
+        ) % world_size == 0
+        self.gradient_accumulation_steps = (
+            self.step_batch_size // self.step_per_device_batch_size // world_size
+        )
 
         logger.warning(
             f"Accumulation steps:\n"
@@ -161,7 +181,9 @@ class TrainingArguments(transformers.TrainingArguments):
         )
 
         if self.save_steps_extra is not None:
-            self.save_steps_extra_list = [int(string) for string in self.save_steps_extra.split("__")]
+            self.save_steps_extra_list = [
+                int(string) for string in self.save_steps_extra.split("__")
+            ]
         else:
             self.save_steps_extra_list = []
 

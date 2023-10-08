@@ -50,6 +50,12 @@ learning algorithms for comparison and modification.
 
 ## Installation
 
+# hacks for apex
+git checkout 0da3ffb
+pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+also need to comment out some weird check of compatability with cuda, torch is on cuda 12.2 but this needs 11.7
+
+that didn't work, need to use torch 1.13.1 which uses 11.7
 To install the stable release, run
 
 ```bash
