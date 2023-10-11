@@ -1,21 +1,18 @@
-output_dir=$1
-run_name=$2
-model_name_or_path=$3
-dataset_name=${4:-"alpaca_noisy_multi_preference"}
+run_name=$1
 
 torchrun --nproc_per_node=8 --master_port=1234 examples/reward_modeling.py \
   --fp16 False \
   --bf16 True \
   --seed 42 \
-  --model_name_or_path "${model_name_or_path}" \
-  --dataset_name "${dataset_name}" \
-  --output_dir "${output_dir}" \
-  --model_max_length 512 \
-  --num_train_epochs 1 \
-  --per_device_train_batch_size 1 \
+  --model_name_or_path "/scr-ssd/ahmedah/alp/opt-67-sft/" \
+  --dataset_name "stanfordnlp/SHP" \
+  --output_dir "/scr-ssd/ahmedah/models/rwl_opt67/" \
+  --model_max_length 2048 \
+  --num_train_epochs 5 \
+  --per_device_train_batch_size 4 \
   --per_device_eval_batch_size 4 \
-  --gradient_accumulation_steps 2 \
-  --eval_steps 10 \
+  --gradient_accumulation_steps 16 \
+  --eval_steps 100 \
   --save_strategy "steps" \
   --save_steps 1000000000 \
   --save_total_limit 1 \
@@ -28,7 +25,7 @@ torchrun --nproc_per_node=8 --master_port=1234 examples/reward_modeling.py \
   --wandb_project "alpaca_farm" \
   --run_name "${run_name}" \
   --fsdp "full_shard auto_wrap" \
-  --fsdp_transformer_layer_cls_to_wrap "LlamaDecoderLayer" \
+  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
   --tf32 True \
   --flash_attn True \
   --ddp_timeout 1800 \

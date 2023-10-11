@@ -255,11 +255,38 @@ def preprocess_for_reward_modeling(
     tokenizer: transformers.PreTrainedTokenizer,
     df_postprocessor: Optional[Callable] = None,
     end_sequence_with_eos: bool = False,
+    dataset: Optional[str] = "alpaca_human_preference",
+    split: Optional[str] = "preference",
     verbose=True,
 ) -> dict[str, torch.Tensor]:
     if df_postprocessor is not None:
         df = df_postprocessor(df)
     list_dict_data = df.to_dict(orient="records")
+
+    preference_keys = ("output_1", "output_2")
+    if "SHP" in dataset:
+        # Select preferred response, discard comparisons with low ratios
+        new_list_dict_data = []
+        for idx, example in tqdm.tqdm(
+            enumerate(list_dict_data), desc="Filtering", disable=not verbose
+        ):
+            scores = [example["score_A"], example["score_B"]]
+            responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
+            score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
+
+            if score_ratio < 2 and split == "train":
+                continue
+
+            # according to https://huggingface.co/datasets/stanfordnlp/SHP
+            list_dict_data[idx]["mod_score_ratio"] = score_ratio
+            list_dict_data[idx]["sft_target"] = max(
+                responses,
+                key=lambda x: scores[responses.index(x)],
+            )
+            new_list_dict_data.append(list_dict_data[idx])
+        list_dict_data = new_list_dict_data
+        preference_keys = ("human_ref_A", "human_ref_B")
+
 
     index_0, index_1 = tuple(
         torch.full(
@@ -268,16 +295,20 @@ def preprocess_for_reward_modeling(
         for fill_value in (0, 1)
     )
 
-    def _get_numeric_preference(example: dict):
-        # 1 vs 2 is stored in table, but for modeling we use 0 vs 1; remap here.
-        return {1: 0, 2: 1}[example["preference"]]
+    def _get_numeric_preference(example: dict, dataset: Optional[str] = None):
+        if 'SHP' in dataset:
+            return [example['labels']]
+        else:
+            # 1 vs 2 is stored in table, but for modeling we use 0 vs 1; remap here.
+            return {1: 0, 2: 1}[example[split]]
+
 
     choice = torch.tensor(
-        [[_get_numeric_preference(dict_data)] for dict_data in list_dict_data]
+       [[_get_numeric_preference(dict_data, dataset)] for dict_data in tqdm.tqdm(list_dict_data, desc="Getting Numeric Preference", disable=not verbose)]
     )
 
     def _get_text(example: dict, output_key: str):
-        source = format_prompt(example, prompt_dict=prompt_dict)
+        source = format_prompt(example, prompt_dict=prompt_dict, dataset=dataset)
         target = format_output(
             example,
             eos_token=tokenizer.eos_token if end_sequence_with_eos else None,
@@ -287,8 +318,8 @@ def preprocess_for_reward_modeling(
 
     # compare the prompt with both completions
     text_list_0, text_list_1 = tuple(
-        [_get_text(dict_data, key) for dict_data in list_dict_data]
-        for key in ("output_1", "output_2")
+        [_get_text(dict_data, key) for dict_data in tqdm.tqdm(list_dict_data, desc=f"Getting Text for {key}", disable=not verbose)]
+        for key in preference_keys
     )
 
     def _merge_tokenization_metadata(metadata_list: Sequence[dict]) -> dict:
@@ -339,15 +370,15 @@ def preprocess_for_reward_modeling(
 
     logger.warning(f"Tokenizing {len(list_dict_data)} pairs...")
     tokenized_0, tokenized_1 = tuple(
-        _tokenize_fn(text_list, tokenizer) for text_list in (text_list_0, text_list_1)
+        _tokenize_fn(text_list, tokenizer) for text_list in tqdm.tqdm((text_list_0, text_list_1), desc="Tokenizing Text Lists", disable=not verbose)
     )
     # "size" (bsz, 2, seq_len)
     input_ids = [
         list(pair)
-        for pair in utils.zip_(tokenized_0["input_ids"], tokenized_1["input_ids"])
+        for pair in tqdm.tqdm(utils.zip_(tokenized_0["input_ids"], tokenized_1["input_ids"]), desc="Processing Input IDs", disable=not verbose)
     ]
     labels = [
-        list(pair) for pair in utils.zip_(tokenized_0["labels"], tokenized_1["labels"])
+        list(pair) for pair in tqdm.tqdm(utils.zip_(tokenized_0["labels"], tokenized_1["labels"]), desc="Processing Labels", disable=not verbose)
     ]
     tokenization_metadata = _merge_tokenization_metadata(
         [tokenized_0["tokenization_metadata"], tokenized_1["tokenization_metadata"]]
@@ -452,6 +483,8 @@ class BinaryRewardModelingDataset(Dataset):
         tokenizer: transformers.PreTrainedTokenizer,
         df_postprocessor: Optional[Callable] = None,
         end_sequence_with_eos: bool = False,
+        dataset: Optional[str] = "alpaca_human_preference",
+        split: Optional[str] = "train",
     ):
         super(BinaryRewardModelingDataset, self).__init__()
         data_dict = preprocess_for_reward_modeling(
@@ -460,6 +493,8 @@ class BinaryRewardModelingDataset(Dataset):
             tokenizer=tokenizer,
             df_postprocessor=df_postprocessor,
             end_sequence_with_eos=end_sequence_with_eos,
+            dataset=dataset,
+            split=split,
         )
         self.input_ids = data_dict["input_ids"]
         self.labels = data_dict["labels"]

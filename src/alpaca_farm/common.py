@@ -29,6 +29,7 @@ from torch import nn
 from torch.distributed.fsdp import FullStateDictConfig
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import StateDictType
+from transformers import AutoModel
 from transformers.trainer import WEIGHTS_NAME, is_deepspeed_zero3_enabled
 
 # from transformers.integrations import
@@ -124,8 +125,8 @@ def make_generative_lm(
             model_cls = flash_opt.OPTForCausalLM
     else:
         # this needs to be GPT neox! gpt neo is different
-        model_cls = transformers.GPTNeoXForCausalLM
-
+        model_cls = AutoModel
+        
     return model_cls.from_pretrained(model_name_or_path, **kwargs)
 
 

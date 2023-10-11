@@ -87,16 +87,23 @@ def make_binary_reward_modeling_data_module(
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
-    alpaca_human_preference = datasets.load_dataset(
-        data_args.dataset_path, data_args.dataset_name
-    )
-    train_df = pd.DataFrame(alpaca_human_preference["preference"])
+    if "SHP" in data_args.dataset_name:
+        alpaca_human_preference = datasets.load_dataset(data_args.dataset_name)
+        split = "train"
+    else:
+        alpaca_human_preference = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+        split = "preference"
+    
+    
+    train_df = pd.DataFrame(alpaca_human_preference[split])
 
     train_dataset = BinaryRewardModelingDataset(
         df=train_df,
         prompt_dict=prompt_dict,
         tokenizer=tokenizer,
         end_sequence_with_eos=training_args.end_sequence_with_eos,
+        dataset=data_args.dataset_name,
+        split=split,
     )
     train_dataset, eval_dataset = split_train_into_train_and_eval(
         train_dataset=train_dataset,

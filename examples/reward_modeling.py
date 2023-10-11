@@ -42,6 +42,7 @@ class DataArguments:
         "alpaca_human_preference",
         "alpaca_gpt4_preference",
         "alpaca_noisy_multi_preference",
+        "stanfordnlp/SHP",
     ] = field(
         default="alpaca_noisy_multi_preference",
         metadata={
@@ -54,8 +55,9 @@ class DataArguments:
             "help": "Number of examples to split out from training to use for evaluation."
         },
     )
+    # TODO: Automatically set based on dataset_name.
     prompt_dict_path: str = field(
-        default=pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json",
+        default=pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json",
         metadata={"help": "Path to the dictionary for the prompt to format examples."},
     )
 
@@ -151,9 +153,8 @@ def main():
             config=config,
         )
         common.let_model_save_mem_when_zero_grad(model)
-
     tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path,
+        "facebook/opt-1.3b",
         cache_dir=training_args.cache_dir,
         model_max_length=training_args.model_max_length,
         padding_side="left",  # Ensure reward is always extracted at the last token embedding.

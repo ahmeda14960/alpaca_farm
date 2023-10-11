@@ -46,6 +46,8 @@ class Trainer(transformers.Trainer):
         )  # Size: (bsz, num_pairs).
         logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
         # Type casting of `choice` is due to amp.autocast context manager.
+        choice = choice.squeeze(-1)
+        # squeeze to avoid error with SHP from (bsz, 1)
         loss = F.binary_cross_entropy_with_logits(
             logits, choice.to(logits.dtype), reduction="mean"
         )

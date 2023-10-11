@@ -2,12 +2,12 @@
 run_name=$1
 model_name_or_path=$3
 
-torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
-  --model_name_or_path "facebook/opt-6.7b" \
+torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
+  --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
   --seed 42 \
-  --output_dir "/scr-ssd/ahmedah/" \
+  --output_dir "/scr-ssd/ahmedah/alp/" \
   --num_train_epochs 3 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
