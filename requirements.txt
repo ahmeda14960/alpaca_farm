@@ -15,6 +15,7 @@ wandb
 torch==1.13.1
 fire
 openai
+gpustat
 alpaca_eval>=0.2.8
 flash_attn==v2.0.6
 # apex version installed is in readme
