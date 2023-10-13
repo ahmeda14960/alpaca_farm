@@ -84,12 +84,13 @@ def make_binary_reward_modeling_data_module(
     tokenizer: transformers.PreTrainedTokenizer,
     data_args,
     training_args,
+    eval=False,
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
     if "SHP" in data_args.dataset_name:
         alpaca_human_preference = datasets.load_dataset(data_args.dataset_name)
-        split = "train"
+        split = "validation" if eval else "train"
     else:
         alpaca_human_preference = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
         split = "preference"
@@ -105,6 +106,7 @@ def make_binary_reward_modeling_data_module(
         dataset=data_args.dataset_name,
         split=split,
     )
+
     train_dataset, eval_dataset = split_train_into_train_and_eval(
         train_dataset=train_dataset,
         eval_size=data_args.eval_size,

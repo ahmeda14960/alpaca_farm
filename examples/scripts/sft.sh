@@ -1,15 +1,15 @@
 #output_dir=$1
-run_name=$1
+run_number=$1
 model_name_or_path=$3
 
-torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
-  --model_name_or_path "facebook/opt-1.3b" \
+CUDA_VISIBLE_DEVICES=$run_number torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
+``  --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
-  --seed 42 \
-  --output_dir "/scr-ssd/ahmedah/alp/" \
+  --seed $run_number \
+  --output_dir "/scr-ssd/ahmedah/alp/opt1b-sft-shp" \
   --num_train_epochs 3 \
-  --per_device_train_batch_size 1 \
+  --per_device_train_batch_size 4 \
   --per_device_eval_batch_size 4 \
   --gradient_accumulation_steps 16 \
   --eval_steps 100 \

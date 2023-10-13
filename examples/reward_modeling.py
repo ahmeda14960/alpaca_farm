@@ -125,6 +125,8 @@ def main():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     os.environ["WANDB_PROJECT"] = training_args.wandb_project
 
+    print(data_args)
+    print(training_args)
     if training_args.deepspeed is not None:
         ctx_mgr = contextlib.nullcontext()
         device_map = None
@@ -165,6 +167,7 @@ def main():
         tokenizer=tokenizer,
         data_args=data_args,
         training_args=training_args,
+        eval=True,
     )
 
     trainer = Trainer(

@@ -56,6 +56,7 @@ class Trainer(transformers.Trainer):
 
 def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
+    import ipdb; ipdb.set_trace()
     logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
     labels = torch.tensor(eval_prediction.label_ids[-1]).squeeze(-1)
     predictions = (logits >= 0.0).long()

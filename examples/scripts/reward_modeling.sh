@@ -1,15 +1,15 @@
-run_name=$1
+run_number=$1
 
-torchrun --nproc_per_node=8 --master_port=1234 examples/reward_modeling.py \
+CUDA_VISIBLE_DEVICES=$run_number torchrun --nproc_per_node=1 --master_port=12${run_number}3 examples/reward_modeling.py \
   --fp16 False \
   --bf16 True \
-  --seed 42 \
-  --model_name_or_path "/scr-ssd/ahmedah/alp/opt-67-sft/" \
+  --seed $run_number \
+  --model_name_or_path "/scr-ssd/ahmedah/alp/opt1b-sft-shp/" \
   --dataset_name "stanfordnlp/SHP" \
-  --output_dir "/scr-ssd/ahmedah/models/rwl_opt67/" \
+  --output_dir "/scr-ssd/ahmedah/models/opt1b-rwl-shp-${run_number}/" \
   --model_max_length 2048 \
   --num_train_epochs 5 \
-  --per_device_train_batch_size 4 \
+  --per_device_train_batch_size 8 \
   --per_device_eval_batch_size 4 \
   --gradient_accumulation_steps 16 \
   --eval_steps 100 \
@@ -23,10 +23,10 @@ torchrun --nproc_per_node=8 --master_port=1234 examples/reward_modeling.py \
   --evaluation_strategy "steps" \
   --logging_steps 10 \
   --wandb_project "alpaca_farm" \
-  --run_name "${run_name}" \
+  --run_name "rl-ensemble-${run_number}" \
   --fsdp "full_shard auto_wrap" \
   --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
-  --tf32 True \
+  --tf32 False \
   --flash_attn True \
   --ddp_timeout 1800 \
   --initialize_model_on_cpu True
