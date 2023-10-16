@@ -577,7 +577,7 @@ def main():
     utils.stable_resize_token_embeddings_and_tokenizer(
         model, tokenizer, special_tokens_dict
     )
-
+    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     data_module: dict = data_utils.make_supervised_data_module(
         tokenizer=tokenizer,
         data_args=data_args,
