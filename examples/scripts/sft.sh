@@ -1,15 +1,17 @@
 #output_dir=$1
 run_number=$1
+run_name=$2
 model_name_or_path=$3
 
-CUDA_VISIBLE_DEVICES=$run_number torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
-``  --model_name_or_path "facebook/opt-1.3b" \
+#CUDA_VISIBLE_DEVICES=$run_number 
+torchrun --nproc_per_node=4 --master_port=1242 examples/supervised.py \
+  --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
   --seed $run_number \
-  --output_dir "/scr-ssd/ahmedah/alp/opt1b-sft-shp" \
+  --output_dir "/scr-ssd/ahmedah/alp/opt1b-sft-debug-alpaca" \
   --num_train_epochs 3 \
-  --per_device_train_batch_size 4 \
+  --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
   --gradient_accumulation_steps 16 \
   --eval_steps 100 \
@@ -22,11 +24,11 @@ CUDA_VISIBLE_DEVICES=$run_number torchrun --nproc_per_node=8 --master_port=1242 
   --lr_scheduler_type "cosine" \
   --evaluation_strategy "steps" \
   --logging_steps 10 \
-  --wandb_project "alpaca_farm" \
-  --run_name "${run_name}" \
+  --wandb_project "alpaca_farm_debug" \
+  --run_name "${run_name}-debug" \
   --tf32 True \
   --flash_attn True \
-  --model_max_length 2048 \
+  --model_max_length 512 \
   --ddp_timeout 1800 \
   --fsdp "full_shard auto_wrap" \
   --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \

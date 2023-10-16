@@ -163,11 +163,11 @@ def main():
         use_fast=training_args.use_fast_tokenizer,
     )
     tokenizer.padding = training_args.padding
+    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     data_module = data_utils.make_binary_reward_modeling_data_module(
         tokenizer=tokenizer,
         data_args=data_args,
         training_args=training_args,
-        eval=True,
     )
 
     trainer = Trainer(

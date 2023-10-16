@@ -453,7 +453,7 @@ class DataArguments:
         },
     )
     dataset_name: Optional[str] = field(
-        default="stanfordnlp/SHP",
+        default="alpaca_instructions",
         metadata={
             "help": "Name of the dataset to load -- the argument `name` passed to `datasets.load_dataset`."
         },
@@ -472,7 +472,7 @@ class DataArguments:
         },
     )
     prompt_dict_path: str = field(
-        default=pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json",
+        default=pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json",
         metadata={"help": "Path to the dictionary for the prompt to format examples."},
     )
 

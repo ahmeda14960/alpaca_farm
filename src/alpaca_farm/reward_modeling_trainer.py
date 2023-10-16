@@ -46,7 +46,8 @@ class Trainer(transformers.Trainer):
         )  # Size: (bsz, num_pairs).
         logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
         # Type casting of `choice` is due to amp.autocast context manager.
-        choice = choice.squeeze(-1)
+        if len(choice.shape) > 1 and logits.shape != choice.shape:
+            choice = choice.squeeze(-1)
         # squeeze to avoid error with SHP from (bsz, 1)
         loss = F.binary_cross_entropy_with_logits(
             logits, choice.to(logits.dtype), reduction="mean"
@@ -56,9 +57,11 @@ class Trainer(transformers.Trainer):
 
 def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
-    import ipdb; ipdb.set_trace()
     logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
     labels = torch.tensor(eval_prediction.label_ids[-1]).squeeze(-1)
+    # if labels isn't single dim squeeze again
+    if len(labels.shape) > 1:
+        labels = labels.squeeze(-1)
     predictions = (logits >= 0.0).long()
     accuracy = predictions.eq(labels).float().mean().item()
     label_positive_rate = (labels == 1).float().mean().item()

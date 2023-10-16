@@ -38,9 +38,12 @@ def make_supervised_data_module(
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
-    alpaca_instructions = datasets.load_dataset(data_args.dataset_name)
-    data_args.train_splits = ["train"]
-    data_args.eval_splits = ["validation"]
+    if "alpaca" in data_args.dataset_name:
+        alpaca_instructions = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+    else:
+        alpaca_instructions = datasets.load_dataset(data_args.dataset_name)
+        data_args.train_splits = ["train"]
+        data_args.eval_splits = ["validation"]
     train_df = pd.concat(
         [pd.DataFrame(alpaca_instructions[split]) for split in data_args.train_splits]
     )
@@ -107,11 +110,23 @@ def make_binary_reward_modeling_data_module(
         split=split,
     )
 
-    train_dataset, eval_dataset = split_train_into_train_and_eval(
-        train_dataset=train_dataset,
-        eval_size=data_args.eval_size,
-        seed=training_args.seed,
-    )
+    if not eval and "SHP" in data_args.dataset_name:
+        eval_df = pd.DataFrame(alpaca_human_preference["validation"])
+        
+        eval_dataset = BinaryRewardModelingDataset(
+            df=eval_df,
+            prompt_dict=prompt_dict,
+            tokenizer=tokenizer,
+            end_sequence_with_eos=training_args.end_sequence_with_eos,
+            dataset=data_args.dataset_name,
+            split="validation",
+        )
+    else:
+        train_dataset, eval_dataset = split_train_into_train_and_eval(
+            train_dataset=train_dataset,
+            eval_size=data_args.eval_size,
+            seed=training_args.seed,
+        )
     data_collator = DataCollatorForBinaryRewardModelingDataset(tokenizer=tokenizer)
     return dict(
         train_dataset=train_dataset,

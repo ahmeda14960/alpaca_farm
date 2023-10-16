@@ -54,7 +54,6 @@ def format_prompt(
         assert (
             "instruction" in example and "input" in example
         ), "Internal error: example missing required keys."
-
         if example["input"] is None or len(example["input"]) == 0:
             formatted_prompt = prompt_dict["prompt_noinputs"].format_map(example)
         else:
@@ -189,7 +188,9 @@ def preprocess_for_sft(
     list_dict_data = df.to_dict(orient="records")
 
     print("list dict data", len(list_dict_data))
+    dataset_output_key = "output"
     if "SHP" in dataset:
+        dataset_output_key = "sft_target"
         # Select preferred response, discard comparisons with low ratios
         new_list_dict_data = []
         for idx, example in tqdm.tqdm(
@@ -217,7 +218,7 @@ def preprocess_for_sft(
     ]
     print("format targets")
     targets = [
-        format_output(dict_data, eos_token=tokenizer.eos_token, output_key="sft_target")
+        format_output(dict_data, eos_token=tokenizer.eos_token, output_key=dataset_output_key)
         for dict_data in list_dict_data
     ]
 
