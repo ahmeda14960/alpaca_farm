@@ -125,8 +125,8 @@ def main():
     dataset = load_dataset("stanfordnlp/SHP", split="validation")
 
     model_dirs = [
-        f"/scr-ssd/ahmedah/models/opt1b-rwl-shp-{run_number}/"
-        for run_number in range(5)
+        f"~/logs/debug-shp-rwl1b-{run_number}/"
+        for run_number in range(1, 6)
     ]
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
