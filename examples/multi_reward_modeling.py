@@ -22,7 +22,7 @@ import transformers
 
 from alpaca_farm import common, constants, data_utils, logging
 from alpaca_farm.models import reward_model
-from alpaca_farm.reward_modeling_trainer import Trainer, compute_reward_modeling_metrics
+from alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics
 
 logger = logging.get_logger(__name__)
 
@@ -155,9 +155,6 @@ def main():
             config=config,
         )
         common.let_model_save_mem_when_zero_grad(model)
-    # todo: make this autoconfigurable even when
-    # we read a saved model rather than from huggingface
-    
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "facebook/opt-1.3b",
         cache_dir=training_args.cache_dir,
@@ -181,7 +178,17 @@ def main():
         **data_module,
     )
 
-    trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+    # trainer = Trainer(
+    #     num_heads=4,  # Number of ensemble members (you can adjust this)
+    #     model=model,
+    #     tokenizer=tokenizer,
+    #     args=training_args,
+    #     compute_metrics=compute_reward_modeling_metrics, 
+    #     **data_module,
+    # )
+
+    #trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+    trainer.train()
     logger.warning(
         "hooray! training finished successfully! now on to model saving.",
         main_process_only=True,

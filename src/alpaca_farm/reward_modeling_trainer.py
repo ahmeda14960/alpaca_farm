@@ -204,8 +204,32 @@ class EnsembleTrainer(transformers.Trainer):
 # # Training loop
 # trainer.train()
 
-
 def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
+    # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
+    logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
+    labels = torch.tensor(eval_prediction.label_ids[-1]).squeeze(-1)
+    # if labels isn't single dim squeeze again
+    if len(labels.shape) > 1:
+        labels = labels.squeeze(-1)
+    predictions = (logits >= 0.0).long()
+    accuracy = predictions.eq(labels).float().mean().item()
+    label_positive_rate = (labels == 1).float().mean().item()
+    positive_rate = (predictions == 1).float().mean().item()
+    true_positive_rate = (
+        predictions * labels
+    ).float().sum().item() / labels.sum().item()
+    false_positive_rate = (predictions * (1 - labels)).float().sum().item() / (
+        1 - labels
+    ).sum().item()
+    return dict(
+        accuracy=accuracy,
+        label_positive_rate=label_positive_rate,
+        positive_rate=positive_rate,
+        true_positive_rate=true_positive_rate,
+        false_positive_rate=false_positive_rate,
+    )
+
+def compute_multi_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
     logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
     logits = logits.reshape(logits.shape[0]*logits.shape[1])

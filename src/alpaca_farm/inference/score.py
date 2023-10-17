@@ -115,6 +115,7 @@ def score_sequences_with_huggingface(
     mixed_precision: Optional[str] = None,
     tf32=False,
     flash_attn=False,
+    type="single",
 ) -> List[float]:
     """Score samples with a reward model.
 
@@ -127,14 +128,14 @@ def score_sequences_with_huggingface(
         mixed_precision: Whether to use mixed precision. If None, no casting will be performed.
         tf32: Whether to use tensorfloat32 for matrix multiplication.
         flash_attn: Turns on flash_attn for the reward model if True.
-
+        type: Whether to use single head or multi head reward model.
+        
     Returns:
         A list of floats representing rewards.
     """
     model, tokenizer = load_model_and_tokenizer_for_inference(
         model_name_or_path=model_name_or_path,
-        # model_cls=reward_model.RewardModel,
-        model_cls=reward_model.MultiHeadRewardModel,
+        model_cls=reward_model.RewardModel if type == "single" else reward_model.MultiHeadRewardModel,
         cache_dir=cache_dir,
         model_kwargs=dict(
             torch_dtype=utils.convert_str_dtype_to_torch_dtype(mixed_precision),
