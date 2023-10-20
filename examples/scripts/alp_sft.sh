@@ -8,8 +8,9 @@ torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
   --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
-  --seed $run_number \
-  --output_dir "/scr-ssd/ahmedah/alp/opt7b-sft-debug-alpaca" \
+  --seed 42 \
+  --dataset_name "alpaca_instructions" \
+  --output_dir "/scr-ssd/ahmedah/alp/opt1b-alp-sft" \
   --num_train_epochs 3 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
@@ -18,7 +19,7 @@ torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
   --save_strategy "steps" \
   --save_steps 1000000000 \
   --save_total_limit 1 \
-  --learning_rate 4e-5 \
+  --learning_rate 2e-5 \
   --weight_decay 0.0 \
   --warmup_ratio 0.03 \
   --lr_scheduler_type "cosine" \
