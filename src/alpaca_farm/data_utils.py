@@ -152,9 +152,12 @@ def make_rl_data_module(
 ):
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
-    alpaca_instructions = datasets.load_dataset(
-        data_args.dataset_path, data_args.dataset_name
-    )
+    if "alpaca" in data_args.dataset_name:
+        alpaca_instructions = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+    else:
+        alpaca_instructions = datasets.load_dataset(data_args.dataset_name)
+        data_args.train_splits = ["train"]
+        data_args.eval_splits = ["validation"]
     train_df = pd.concat(
         [pd.DataFrame(alpaca_instructions[split]) for split in data_args.train_splits]
     )
@@ -173,15 +176,19 @@ def make_rl_data_module(
         df=train_df,
         prompt_dict=prompt_dict,
         tokenizer=tokenizer,
+        dataset=data_args.dataset_name,
         query_len=training_args.query_len,
         prompt_postprocessor=prompt_postprocessor,
+        split=data_args.train_splits[0]
     )
     eval_dataset = QueryDataset(
         df=eval_df,
         prompt_dict=prompt_dict,
         tokenizer=tokenizer,
+        dataset=data_args.dataset_name,
         query_len=training_args.query_len,
         prompt_postprocessor=prompt_postprocessor,
+        split=data_args.eval_splits[0]
     )
     return dict(
         train_dataset=train_dataset,

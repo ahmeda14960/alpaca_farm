@@ -29,7 +29,7 @@ logger = logging.get_logger(__name__)
 @dataclass
 class DataArguments:
     dataset_path: str = field(default="tatsu-lab/alpaca_farm")
-    dataset_name: str = field(default="alpaca_instructions")
+    dataset_name: str = field(default="stanfordnlp/SHP")
     train_splits: List[str] = field(default_factory=lambda: ["unlabeled"])
     eval_splits: List[str] = field(default_factory=lambda: ["val"])
     prompt_dict_path: str = field(
