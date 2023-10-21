@@ -240,6 +240,9 @@ class CustomTrainer(Trainer):
             loss, logits, labels = self.prediction_step(
                 model, inputs, prediction_loss_only, ignore_keys=ignore_keys
             )
+            if torch.isnan(loss):
+                import ipdb; ipdb.set_trace()
+
             inputs_decode = (
                 self._prepare_input(inputs["input_ids"])
                 if args.include_inputs_for_metrics
@@ -414,6 +417,7 @@ class CustomTrainer(Trainer):
 
         if all_losses is not None:
             # Nan values from losses
+            import ipdb; ipdb.set_trace()
             print(f' nan samples found ! {np.sum(np.isnan(all_losses))}')
             metrics[f"{metric_key_prefix}_loss"] = np.nanmean(all_losses).item()
         if hasattr(self, "jit_compilation_time"):

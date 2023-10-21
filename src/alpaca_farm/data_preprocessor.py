@@ -200,7 +200,7 @@ def preprocess_for_sft(
             responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
             score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
 
-            if score_ratio < 2 and split == "train":
+            if score_ratio < 10 and split == "train":
                 continue
 
             # according to https://huggingface.co/datasets/stanfordnlp/SHP
