@@ -16,14 +16,14 @@ from .. import logging
 
 logger = logging.get_logger(__name__)
 
-try:
-    import apex
+# try:
+#     import apex
 
-    apex_is_installed = True
-    logger.warning("`apex` is installed. Using fused operators.")
-except ImportError as e:
-    apex_is_installed = False
-    logger.warning("`apex` is not installed. Reverting to non-fused operators.")
+#     apex_is_installed = True
+#     logger.warning("`apex` is installed. Using fused operators.")
+# except ImportError as e:
+apex_is_installed = False
+logger.warning("`apex` is not installed. Reverting to non-fused operators.")
 
 
 def apex_layernorm(ln_module, input_):

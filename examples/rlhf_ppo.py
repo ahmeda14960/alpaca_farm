@@ -49,7 +49,6 @@ def main():
         accelerator.state, main_process_only=False
     )  # Each process log their own state.
 
-    import ipdb; ipdb.set_trace()
     tokenizer: transformers.PreTrainedTokenizer = make_tokenizer(args=training_args)
     model_module: dict = make_models(
         tokenizer=tokenizer, args=training_args, accelerator=accelerator
@@ -58,7 +57,6 @@ def main():
         tokenizer=tokenizer, data_args=data_args, training_args=training_args
     )
 
-    import ipdb; ipdb.set_trace()
     trainer = PPOTrainer(
         args=training_args,
         accelerator=accelerator,

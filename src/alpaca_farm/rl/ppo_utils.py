@@ -42,6 +42,7 @@ class DataArguments:
 class TrainingArguments(transformers.TrainingArguments):
     wandb_project: str = field(default=constants.WANDB_PROJECT)
     cache_dir: Optional[str] = field(default=constants.DEFAULT_CACHE_DIR)
+
     flash_attn: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     truncate_tokens: Optional[List[str]] = field(
@@ -62,6 +63,12 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={
             "help": "Reward assigned to sequences that are truncated, "
             "e.g., due to outputting incomplete sentences for given context window."
+        },
+    )
+    reward_model_name_or_paths:  Optional[List[str]] = field(
+        default_factory=lambda: None,
+        metadata={
+            "help": "Reward model paths if ensembling. "
         },
     )
     total_epochs: int = field(default=10)
@@ -104,7 +111,7 @@ class TrainingArguments(transformers.TrainingArguments):
             "Parse this with str.split('__')."
         },
     )
-    query_len: int = field(default=192)
+    query_len: int = field(default=520)
     response_len: int = field(default=300)
     policy_model_name_or_path: str = field(default=None)
     reward_model_name_or_path: str = field(default=None)
