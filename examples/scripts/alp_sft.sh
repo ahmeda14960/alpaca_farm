@@ -4,7 +4,7 @@ run_name=$2
 model_name_or_path=$3
 
 #CUDA_VISIBLE_DEVICES=$run_number 
-torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
+torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
   --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
