@@ -228,6 +228,9 @@ def preprocess_for_sft(
         _tokenize_fn(strings, tokenizer) for strings in (examples, sources)
     ]
 
+    # import ipdb
+    # ipdb.set_trace()
+
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     print("process labels")
@@ -246,6 +249,7 @@ def preprocess_for_sft(
         logger.warning(
             f"Tokenization metadata:\n{utils.jdumps(packaged_data['tokenization_metadata'])}"
         )
+
 
     return packaged_data
 
@@ -275,7 +279,7 @@ def preprocess_for_reward_modeling(
             responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
             score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
 
-            if score_ratio < 2 and split == "train":
+            if score_ratio < 2 and split == "train": #alter for debugging
                 continue
 
             # according to https://huggingface.co/datasets/stanfordnlp/SHP
@@ -445,6 +449,8 @@ class SFTDataset(Dataset):
         self.labels = data_dict["labels"]
         self.metadata = data_dict["metadata"]
         self.tokenization_metadata = data_dict["tokenization_metadata"]
+        # import ipdb
+        # ipdb.set_trace()
 
     def __len__(self):
         return len(self.input_ids)
