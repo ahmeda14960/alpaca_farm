@@ -224,12 +224,20 @@ def preprocess_for_sft(
 
     examples = [s + t for s, t in utils.zip_(sources, targets)]
     print("tokenizing")
-    examples_tokenized, sources_tokenized = [
+
+
+
+    examples_tokenized, sources_tokenized = [ 
         _tokenize_fn(strings, tokenizer) for strings in (examples, sources)
     ]
 
-    # import ipdb
-    # ipdb.set_trace()
+    # Get the indices where 'input_ids_lens' is strictly less than 2048
+    valid_indices = [i for i, lens in enumerate(sources_tokenized['input_ids_lens']) if lens < 2048]
+
+    # filter dictionaries
+    examples_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in examples_tokenized.items()}
+    sources_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in sources_tokenized.items()}
+
 
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
