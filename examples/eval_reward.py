@@ -43,7 +43,7 @@ class TrainingArguments(transformers.TrainingArguments):
     flash_attn: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(
-        default=2048,
+        default=1024,
         metadata={
             "help": "Maximum sequence length. Sequences will be left padded to this length always during training."
         },
@@ -121,11 +121,8 @@ class DataArguments:
 def main():
     parser = transformers.HfArgumentParser((TrainingArguments, DataArguments))
     training_args, data_args = parser.parse_args_into_dataclasses()
-    # Example usage:
-    dataset = load_dataset("stanfordnlp/SHP", split="validation")
-
     model_dirs = [
-        f"~/logs/debug-shp-rwl1b-{run_number}/"
+        f"/lfs/skampere1/0/ahmedah/logs/optdebug-shp-rwl1b-{run_number}/"
         for run_number in range(1, 6)
     ]
 
@@ -153,7 +150,9 @@ def main():
 
     plot_accuracy_vs_likelihood(model_dirs, validation_dataloader)
 
-def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edges):
+def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edges, mode="min"):
+    assert mode in ["max", "median", "min"], "Invalid mode. Choose from 'max', 'median', or 'min'."
+
     likelihoods = []
     predictions = []
     ground_truths = []
@@ -161,14 +160,14 @@ def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edge
     with torch.no_grad():
         for batch in tqdm.tqdm(validation_loader, desc="Validating", leave=False):
             batch_size, num_pairs, context_len = batch["input_ids"].shape
-            max_probs = torch.zeros((batch_size,)).cuda(device_list[0])  # Initialize on first GPU
-
+            
+            all_probs = torch.zeros((batch_size, len(models))).cuda(device_list[0]) # Store all model probabilities
 
             for idx, model in tqdm.tqdm(enumerate(models), desc="Ensembling", leave=False):
                 device = device_list[idx]
-                #max_probs = max_probs.to(device)
                 batch_input_ids = batch["input_ids"].to(device)
                 batch_attention_mask = batch["attention_mask"].to(device)
+                
                 outputs = model(batch_input_ids.view(batch_size*num_pairs, context_len), 
                                 batch_attention_mask.view(batch_size*num_pairs, context_len))
                 outputs.rewards = outputs.rewards.view(batch_size, num_pairs)
@@ -176,12 +175,19 @@ def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edge
                 exp_rewards = torch.exp(outputs.rewards)
                 sum_exp_rewards = exp_rewards.sum(dim=1)
                 prob_choice_0 = exp_rewards[:, 0] / sum_exp_rewards
-                max_probs = torch.where(prob_choice_0 > max_probs, prob_choice_0, max_probs)
-                torch.cuda.synchronize(device)  # Wait for all CUDA operations to complete
+                
+                all_probs[:, idx] = prob_choice_0
+                torch.cuda.synchronize(device)
 
+            if mode == "max":
+                final_probs = all_probs.max(dim=1).values
+            elif mode == "median":
+                final_probs = all_probs.median(dim=1).values
+            else:  # mode == "min"
+                final_probs = all_probs.min(dim=1).values
 
-            likelihoods.extend(max_probs.tolist())
-            predictions.extend((max_probs <= 0.5).long().tolist())
+            likelihoods.extend(final_probs.tolist())
+            predictions.extend((final_probs <= 0.5).long().tolist())
             ground_truths.extend(batch["choice"].flatten().tolist())
 
     bin_idxs = np.digitize(likelihoods, bin_edges)
@@ -191,7 +197,6 @@ def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edge
         idxs = [i for i, b in enumerate(bin_idxs) if b == bin_idx]
         if not idxs:
             continue
-
         correct = sum(predictions[i] == ground_truths[i] for i in idxs)
         bin_accuracies[bin_idx] = correct / len(idxs)
 

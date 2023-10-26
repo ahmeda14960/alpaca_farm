@@ -521,15 +521,7 @@ def make_models(
         return base_model
 
     def make_reward_model():
-        # return reward_model_module.RewardModel.from_pretrained(
-        #     args.reward_model_name_or_path,
-        #     flash_attn=args.flash_attn,
-        #     mixed_precision=accelerator.mixed_precision,
-        #     cache_dir=args.cache_dir,
-        #     low_cpu_mem_usage=True,
-        #     device_map={"": accelerator.device},
-        # )
-        return reward_model_module.MultiHeadRewardModel.from_pretrained(
+        return reward_model_module.RewardModel.from_pretrained(
             args.reward_model_name_or_path,
             flash_attn=args.flash_attn,
             mixed_precision=accelerator.mixed_precision,
@@ -537,6 +529,29 @@ def make_models(
             low_cpu_mem_usage=True,
             device_map={"": accelerator.device},
         )
+    def make_ensemble_reward_model():
+        # Assuming args.reward_model_name_or_paths is a list of paths
+        models = [reward_model_module.RewardModel.from_pretrained(
+                    path,
+                    flash_attn=args.flash_attn,
+                    mixed_precision=accelerator.mixed_precision,
+                    cache_dir=args.cache_dir,
+                    low_cpu_mem_usage=True,
+                    device_map={"": accelerator.device},
+                ) for path in args.reward_model_name_or_paths]
+        
+        # Create the ensemble model using the loaded models
+        ensemble_model = reward_model_module.EnsembleRewardModel(models)
+        
+        return ensemble_model
+        # return reward_model_module.MultiHeadRewardModel.from_pretrained(
+        #     args.reward_model_name_or_path,
+        #     flash_attn=args.flash_attn,
+        #     mixed_precision=accelerator.mixed_precision,
+        #     cache_dir=args.cache_dir,
+        #     low_cpu_mem_usage=True,
+        #     device_map={"": accelerator.device},
+        # )
 
     # Model construction below seems convoluted, but it's made to trade time for RAM efficiency.
     # For large models, object creation could be extremely RAM intensive.

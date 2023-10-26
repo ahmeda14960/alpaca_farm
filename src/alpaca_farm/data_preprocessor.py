@@ -472,6 +472,7 @@ class DataCollatorForSFTDataset(object):
     tokenizer: transformers.PreTrainedTokenizer
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, Tensor]:
+        import ipdb; ipdb.set_trace()
         input_ids, labels = tuple(
             [instance[key] for instance in instances] for key in ("input_ids", "labels")
         )
@@ -589,8 +590,10 @@ class QueryDataset(Dataset):
         prompt_dict: dict,
         tokenizer: transformers.PreTrainedTokenizer,
         query_len: int,
+        dataset: Optional[str] = None,
         df_postprocessor: Optional[Callable] = None,
         prompt_postprocessor: Optional[Callable] = None,
+        split = 'train'
     ):
         super(QueryDataset, self).__init__()
 
@@ -598,8 +601,30 @@ class QueryDataset(Dataset):
             df = df_postprocessor(df)
         list_dict_data = df.to_dict(orient="records")
 
+        if "SHP" in dataset:
+            dataset_output_key = "sft_target"
+            # Select preferred response, discard comparisons with low ratios
+            new_list_dict_data = []
+            for idx, example in tqdm.tqdm(
+                enumerate(list_dict_data), desc="Filtering"
+            ):
+                scores = [example["score_A"], example["score_B"]]
+                responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
+                score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
+
+                if score_ratio < 2 and split == "train":
+                    continue
+
+                # according to https://huggingface.co/datasets/stanfordnlp/SHP
+                list_dict_data[idx]["mod_score_ratio"] = score_ratio
+                list_dict_data[idx]["sft_target"] = max(
+                    responses,
+                    key=lambda x: scores[responses.index(x)],
+                )
+                new_list_dict_data.append(list_dict_data[idx])
+            list_dict_data = new_list_dict_data
         prompts = [
-            format_prompt(example=dict_data, prompt_dict=prompt_dict)
+            format_prompt(example=dict_data, prompt_dict=prompt_dict, dataset=dataset)
             for dict_data in list_dict_data
         ]
         if prompt_postprocessor is not None:
