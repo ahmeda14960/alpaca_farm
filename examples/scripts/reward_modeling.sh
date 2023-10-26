@@ -5,10 +5,10 @@ torchrun --nproc_per_node=1 --master_port=1243 examples/reward_modeling.py \
   --fp16 False \
   --bf16 True \
   --seed 42 \
-  --model_name_or_path "/scr-ssd/ahmedah/alp/opt1b-sft-debug-alpaca/" \
+  --model_name_or_path "code/workstream1_code/output_results/dummy_sft_fast" \
   --dataset_name "alpaca_human_preference" \
-  --output_dir "/scr-ssd/ahmedah/debug-opt-rwl1b/" \
-  --model_max_length 512 \
+  --output_dir "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/dummy_reward_fast" \
+  --model_max_length 2048 \
   --num_train_epochs 1 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \

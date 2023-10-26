@@ -4,14 +4,14 @@ run_name=$2
 model_name_or_path=$3
 
 #CUDA_VISIBLE_DEVICES=$run_number 
-torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
+torchrun --nproc_per_node=4 --master_port=1242 examples/supervised.py \
   --model_name_or_path "facebook/opt-1.3b" \
   --dataset_name "stanfordnlp/SHP" \
   --fp16 False \
   --bf16 True \
   --seed $run_number \
   --output_dir "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results" \
-  --num_train_epochs 3 \
+  --num_train_epochs 1 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 1 \
   --gradient_accumulation_steps 16 \
