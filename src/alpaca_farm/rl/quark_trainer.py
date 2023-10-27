@@ -134,6 +134,7 @@ class QuarkTrainer(rl_trainer.RLTrainer):
         reward_model: nn.Module,
         tokenizer: transformers.PreTrainedTokenizer,
         accelerator: accelerate_patch.MyAccelerator,
+        multi_head: bool = False,
         optimizer: Optional[torch.optim.Optimizer] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ):
@@ -153,6 +154,7 @@ class QuarkTrainer(rl_trainer.RLTrainer):
         self.data_pool = DataPool(self.tokenizer)
         self.entropy_ctl = kl_controller.FixedKLController(kl_coef=args.entropy_coef)
         self.sft_dataloader = None  # Must be instantiated in `rollout`.
+        self.multi_head = multi_head
 
     def train(self):
         total_epochs = self.args.total_epochs
@@ -566,14 +568,16 @@ def make_models(
         return base_model
 
     def make_reward_model():
-        # return reward_model_module.RewardModel.from_pretrained(
-        #     args.reward_model_name_or_path,
-        #     flash_attn=args.flash_attn,
-        #     mixed_precision=accelerator.mixed_precision,
-        #     cache_dir=args.cache_dir,
-        #     low_cpu_mem_usage=True,
-        #     device_map={"": accelerator.device},
-        # )
+        return reward_model_module.RewardModel.from_pretrained(
+            args.reward_model_name_or_path,
+            flash_attn=args.flash_attn,
+            mixed_precision=accelerator.mixed_precision,
+            cache_dir=args.cache_dir,
+            low_cpu_mem_usage=True,
+            device_map={"": accelerator.device},
+        )
+
+    def make_ensemble_reward_model():
         return reward_model_module.MultiHeadRewardModel.from_pretrained(
             args.reward_model_name_or_path,
             flash_attn=args.flash_attn,
@@ -597,7 +601,10 @@ def make_models(
     ref_policy.requires_grad_(False)
     ref_policy = accelerator.prepare(ref_policy)  # noqa
 
-    reward_model = make_reward_model()
+    if not self.multi_head:
+        reward_model = make_reward_model()
+    else: 
+        reward_model = make_ensemble_reward_model()
     reward_model.requires_grad_(False)
     reward_model = accelerator.prepare(reward_model)
 

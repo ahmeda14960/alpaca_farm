@@ -20,6 +20,7 @@ from datasets import load_dataset
 from alpaca_farm import common, constants, data_utils, logging
 from alpaca_farm.data_utils import DataCollatorForBinaryRewardModelingDataset
 from alpaca_farm.models.reward_model import (
+    MultiHeadRewardModel,
     RewardModel,
     RewardConfig,
 )  # Adjust the import based on where your module is saved
@@ -148,7 +149,8 @@ def main():
         train_dataset, data_collator, tokenizer, batch_size=8, shuffle=False
     )
 
-    plot_accuracy_vs_likelihood(model_dirs, validation_dataloader)
+    multi_head = False
+    plot_accuracy_vs_likelihood(model_dirs, validation_dataloader, multi_head)
 
 def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edges, mode="min"):
     assert mode in ["max", "median", "min"], "Invalid mode. Choose from 'max', 'median', or 'min'."
@@ -202,7 +204,7 @@ def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edge
 
     return bin_accuracies
 
-def plot_accuracy_vs_likelihood(model_dirs, validation_loader):
+def plot_accuracy_vs_likelihood(model_dirs, validation_loader, multi_head=False):
     bin_edges = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     # this is zero index, np bin returns 1 index!
     accuracies_by_bin = {i:[] for i in range(1, len(bin_edges))}
@@ -213,7 +215,10 @@ def plot_accuracy_vs_likelihood(model_dirs, validation_loader):
     device = torch.device('cuda')
     for idx, model_dir in tqdm.tqdm(enumerate(model_dirs), desc="Loading models", leave=False):
         config = RewardConfig.from_pretrained(model_dir)
-        model = RewardModel.from_pretrained(model_dir, config=config, flash_attn=True, bf16=True)
+        if not multi_head:
+            model = RewardModel.from_pretrained(model_dir, config=config, flash_attn=True, bf16=True)
+        else:
+            model = MultiHeadRewardModel.from_pretrained(model_dir, config=config, flash_attn=True, bf16=True)
         model = model.to(device).half().eval()
         models.append(model)
         device_list.append(device)

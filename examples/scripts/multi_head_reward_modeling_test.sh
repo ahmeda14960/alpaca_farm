@@ -3,7 +3,7 @@ run_name=$2
 model_name_or_path=$3
 dataset_name=${4:-"alpaca_noisy_multi_preference"}
 
-torchrun --nproc_per_node=1 --master_port=1234 examples/multi_reward_modeling.py \
+torchrun --nproc_per_node=1 --master_port=1234 examples/multi_head_unit_test.py \
   --fp16 False \
   --bf16 True \
   --seed 42 \

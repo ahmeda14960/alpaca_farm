@@ -22,7 +22,7 @@ import transformers
 
 from alpaca_farm import common, constants, data_utils, logging
 from alpaca_farm.models import reward_model
-from alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics, compute_multi_reward_modeling_metrics
+from src.alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics, compute_multi_reward_modeling_metrics
 logger = logging.get_logger(__name__)
 
 
