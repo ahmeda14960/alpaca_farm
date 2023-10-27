@@ -19,6 +19,12 @@ import torch
 import torch.nn.functional as F
 import transformers
 from transformers.trainer_utils import EvalPrediction
+from transformers.utils import (
+    is_sagemaker_mp_enabled,
+)
+
+if is_sagemaker_mp_enabled():
+    from .trainer_pt_utils import smp_forward_backward
 
 from alpaca_farm import common, torch_ops
 
@@ -62,7 +68,7 @@ class EnsembleTrainer(transformers.Trainer):
         self.num_heads = num_heads
         super().__init__(*args, **kwargs)
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_training_loss(self, model, inputs, return_outputs=False):
         losses = []
         logits_list = []
         
@@ -110,88 +116,88 @@ class EnsembleTrainer(transformers.Trainer):
         else:
             return loss
 
-    # def compute_loss(self, model, inputs, return_outputs=False):
-    #     losses = []
-    #     logits_list = []
+    def compute_loss(self, model, inputs, return_outputs=False):
+        losses = []
+        logits_list = []
         
-    #     # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
-    #     # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
-    #     # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
-    #     input_ids, attention_mask, index_0, index_1, choice = common.unpack_dict(
-    #         inputs, keys=("input_ids", "attention_mask", "index_0", "index_1", "choice")
-    #     )
-    #     num_candidates, num_pairs = input_ids.size(1), choice.size(1)
+        # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
+        # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
+        # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
+        input_ids, attention_mask, index_0, index_1, choice = common.unpack_dict(
+            inputs, keys=("input_ids", "attention_mask", "index_0", "index_1", "choice")
+        )
+        num_candidates, num_pairs = input_ids.size(1), choice.size(1)
         
-    #     num_per_head = input_ids.size(0)//self.num_heads
+        num_per_head = input_ids.size(0)//self.num_heads
     
-    #     for i in range(self.num_heads):
-    #         input_ids_flat, attention_mask_flat = tuple(
-    #             einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids, attention_mask)
-    #         )
+        for i in range(self.num_heads):
+            input_ids_flat, attention_mask_flat = tuple(
+                einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids, attention_mask)
+            )
             
-    #         outputs = model(input_ids=input_ids_flat, head_index=i, attention_mask=attention_mask_flat)
-    #         rewards_flat = outputs.rewards
-    #         rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
+            outputs = model(input_ids=input_ids_flat, head_index=i, attention_mask=attention_mask_flat)
+            rewards_flat = outputs.rewards
+            rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
 
-    #         rewards_0, rewards_1 = tuple(
-    #             torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
-    #         )  # Size: (bsz, num_pairs).
-    #         logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
+            rewards_0, rewards_1 = tuple(
+                torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
+            )  # Size: (bsz, num_pairs).
+            logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
 
-    #         loss_head = F.binary_cross_entropy_with_logits(logits, choice.to(logits.dtype), reduction="mean")
+            loss_head = F.binary_cross_entropy_with_logits(logits, choice.to(logits.dtype), reduction="mean")
 
-    #         losses.append(loss_head)
-    #         logits_list.append(logits)
+            losses.append(loss_head)
+            logits_list.append(logits)
 
-    #     # Average the losses from all heads
-    #     loss = sum(losses) / self.num_heads
-    #     logits = sum(logits_list) / self.num_heads
+        # Average the losses from all heads
+        loss = sum(losses) / self.num_heads
+        logits = sum(logits_list) / self.num_heads
 
-    #     if return_outputs:
-    #         return (loss, dict(logits=logits))  # Return logits from all heads
-    #     else:
-    #         return loss
+        if return_outputs:
+            return (loss, dict(logits=logits))  # Return logits from all heads
+        else:
+            return loss
 
-    # def training_step(self, model, inputs) -> torch.Tensor:
-    #     """
-    #     Perform a training step on a batch of inputs.
+    def training_step(self, model, inputs) -> torch.Tensor:
+        """
+        Perform a training step on a batch of inputs.
 
-    #     Subclass and override to inject custom behavior.
+        Subclass and override to inject custom behavior.
 
-    #     Args:
-    #         model (`nn.Module`):
-    #             The model to train.
-    #         inputs (`Dict[str, Union[torch.Tensor, Any]]`):
-    #             The inputs and targets of the model.
+        Args:
+            model (`nn.Module`):
+                The model to train.
+            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
 
-    #             The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
-    #             argument `labels`. Check your model's documentation for all accepted arguments.
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument `labels`. Check your model's documentation for all accepted arguments.
 
-    #     Return:
-    #         `torch.Tensor`: The tensor with training loss on this batch.
-    #     """
-    #     model.train()
-    #     inputs = self._prepare_inputs(inputs)
+        Return:
+            `torch.Tensor`: The tensor with training loss on this batch.
+        """
+        model.train()
+        inputs = self._prepare_inputs(inputs)
 
-    #     if is_sagemaker_mp_enabled():
-    #         loss_mb = smp_forward_backward(model, inputs, self.args.gradient_accumulation_steps)
-    #         return loss_mb.reduce_mean().detach().to(self.args.device)
+        if is_sagemaker_mp_enabled():
+            loss_mb = smp_forward_backward(model, inputs, self.args.gradient_accumulation_steps)
+            return loss_mb.reduce_mean().detach().to(self.args.device)
 
-    #     with self.compute_loss_context_manager():
-    #         loss = self.compute_training_loss(model, inputs)
+        with self.compute_loss_context_manager():
+            loss = self.compute_training_loss(model, inputs)
 
-    #     if self.args.n_gpu > 1:
-    #         loss = loss.mean()  # mean() to average on multi-gpu parallel training
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
-    #     if self.do_grad_scaling:
-    #         self.scaler.scale(loss).backward()
-    #     elif self.use_apex:
-    #         with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-    #             scaled_loss.backward()
-    #     else:
-    #         self.accelerator.backward(loss)
+        if self.do_grad_scaling:
+            self.scaler.scale(loss).backward()
+        elif self.use_apex:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            self.accelerator.backward(loss)
 
-    #     return loss.detach() / self.args.gradient_accumulation_steps
+        return loss.detach() / self.args.gradient_accumulation_steps
 # # Example usage
 # trainer = EnsembleTrainer(
 #     model=model,  # Your model

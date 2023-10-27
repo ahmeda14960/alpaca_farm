@@ -22,8 +22,7 @@ import transformers
 
 from alpaca_farm import common, constants, data_utils, logging
 from alpaca_farm.models import reward_model
-from alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics
-
+from alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics, compute_multi_reward_modeling_metrics
 logger = logging.get_logger(__name__)
 
 
@@ -146,7 +145,7 @@ def main():
         config = reward_model.RewardConfig(
             backbone_model_name_or_path=model_args.model_name_or_path
         )
-        model = reward_model.RewardModel(
+        model = reward_model.MultiHeadRewardModel(
             flash_attn=training_args.flash_attn,
             fp16=training_args.fp16,
             bf16=training_args.bf16,
@@ -170,22 +169,14 @@ def main():
         training_args=training_args,
     )
 
-    trainer = Trainer(
+    trainer = EnsembleTrainer(
+        num_heads=4,  # Number of ensemble members (you can adjust this)
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        compute_metrics=compute_reward_modeling_metrics,
+        compute_metrics=compute_multi_reward_modeling_metrics, 
         **data_module,
     )
-
-    # trainer = Trainer(
-    #     num_heads=4,  # Number of ensemble members (you can adjust this)
-    #     model=model,
-    #     tokenizer=tokenizer,
-    #     args=training_args,
-    #     compute_metrics=compute_reward_modeling_metrics, 
-    #     **data_module,
-    # )
 
     #trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.train()
