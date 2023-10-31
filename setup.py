@@ -19,6 +19,8 @@ import re
 import setuptools
 
 
+
+
 def parse_requirements(filename):
     logging.warning(f"Reading requirements from {filename}")
     with open(filename, "r") as file:
@@ -46,25 +48,25 @@ setuptools.setup(
     packages=setuptools.find_packages("src"),
     include_package_data=True,
     install_requires=install_requires,
-    extras_require={
-        "full": [
-            # Training efficiency.
-            "flash-attn",
-            "apex",
-            "deepspeed",
-            # Plotting and visualization.
-            "benepar",
-            "spacy",
-            "spacy_fastlang",
-            "plotly",
-            "mapply",
-        ],
-        "dev": {
-            "pre-commit>=3.2.0",
-            "black>=23.1.0",
-            "isort",
-        },
-    },
+    # extras_require={
+    #     "full": [
+    #         # Training efficiency.
+    #         "flash-attn",
+    #         "apex",
+    #         "deepspeed",
+    #         # Plotting and visualization.
+    #         "benepar",
+    #         "spacy",
+    #         "spacy_fastlang",
+    #         "plotly",
+    #         "mapply",
+    #     ],
+    #     "dev": {
+    #         "pre-commit>=3.2.0",
+    #         "black>=23.1.0",
+    #         "isort",
+    #     },
+    # },
     python_requires=">=3.10",
     classifiers=[
         "Intended Audience :: Developers",

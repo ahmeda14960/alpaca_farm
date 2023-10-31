@@ -3,14 +3,19 @@ run_number=$1
 run_name=$2
 model_name_or_path=$3
 
+current_datetime=$(date +"%Y%m%d%H%M%S")
+output_dir=~/out/1b_alpsft_${current_datetime}
+
+mkdir -p $output_dir
+
 #CUDA_VISIBLE_DEVICES=$run_number 
-torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
+torchrun --nproc_per_node=3 --master_port=1242 examples/supervised.py \
   --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
   --seed 42 \
   --dataset_name "alpaca_instructions" \
-  --output_dir "/scr-ssd/ahmedah/alp/opt1b-alp-sft" \
+  --output_dir "$output_dir" \
   --num_train_epochs 3 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
