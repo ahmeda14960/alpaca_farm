@@ -1,6 +1,6 @@
-run_number=$1s
+run_number=$1
 # add line that makes the output dir
-mkdir -p "/scr-ssd/ahmedah/debug-shp-rwl1b-${run_number}/"
+mkdir -p "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/dummy_reward_fast-${run_number}/"
 
 GPUS=4
 GA=8
@@ -8,19 +8,11 @@ GA=8
 torchrun --nproc_per_node=4 --master_port=1343 examples/reward_modeling.py \
   --fp16 False \
   --bf16 True \
-<<<<<<< HEAD
-  --seed 42 \
-  --model_name_or_path "code/workstream1_code/output_results/dummy_sft_fast" \
+  --seed $run_number \
+  --model_name_or_path "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/dummy_sft_opt" \
   --dataset_name "alpaca_human_preference" \
   --output_dir "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/dummy_reward_fast" \
-  --model_max_length 2048 \
-=======
-  --seed $run_number \
-  --model_name_or_path "/scr-ssd/ahmedah/alp/opt1b-sft-shp/" \
-  --dataset_name "alpaca_human_preference" \
-  --output_dir "/scr-ssd/ahmedah//" \
   --model_max_length 1024 \
->>>>>>> main
   --num_train_epochs 1 \
   --per_device_train_batch_size 8 \
   --per_device_eval_batch_size 8 \

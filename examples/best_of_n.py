@@ -116,7 +116,7 @@ def run_rerank(
     scorer_name_or_path: AnyPath,
     output_path: AnyPathOrNone = None,
     per_device_batch_size=4,
-    rerank_top_k=1,
+    rerank_top_k=2,
     mixed_precision=None,
     tf32=False,
     flash_attn=False,
@@ -208,10 +208,12 @@ def run_best_of_n(
     rerank_return_list_dict_data = run_rerank(
         list_dict_data_or_path=decode_return_list_dict_data,
         scorer_name_or_path=scorer_name_or_path,
+        output_path = output_path,
         per_device_batch_size=per_device_batch_size,
         mixed_precision=mixed_precision,
         tf32=tf32,
         flash_attn=flash_attn,
+        
     )
 
     # Convert best-k-of-n into best-of-n.
@@ -229,8 +231,8 @@ def run_best_of_n(
         )
     ]
 
-    if output_path is not None and distributed_utils.is_main_process():
-        utils.jdump(return_list_dict_data, output_path)
+    # if output_path is not None and distributed_utils.is_main_process():
+    #     utils.jdump(return_list_dict_data, output_path)
 
     return return_list_dict_data
 

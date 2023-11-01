@@ -28,7 +28,7 @@ torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
   --run_name "${run_name}" \
   --tf32 True \
   --flash_attn True \
-  --model_max_length 512 \
+  --model_max_length 2048 \
   --ddp_timeout 1800 \
   --fsdp "full_shard auto_wrap" \
   --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \

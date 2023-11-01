@@ -30,7 +30,7 @@ logger = logging.get_logger(__name__)
 
 
 def format_prompt(
-    example: dict, prompt_dict: dict, dataset: Optional[str] = None
+    example: dict, prompt_dict: dict, dataset: Optional[str] = 'dummy'
 ) -> str:
     """Formats a prompt with a prompt_dict formatter.
 
@@ -287,7 +287,7 @@ def preprocess_for_reward_modeling(
             responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
             score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
 
-            if score_ratio < 2 and split == "train": #alter for debugging
+            if score_ratio < 10 and split == "train": #alter for debugging
                 continue
 
             # according to https://huggingface.co/datasets/stanfordnlp/SHP
@@ -612,7 +612,7 @@ class QueryDataset(Dataset):
                 responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
                 score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
 
-                if score_ratio < 2 and split == "train":
+                if score_ratio < 10 and split == "train":
                     continue
 
                 # according to https://huggingface.co/datasets/stanfordnlp/SHP

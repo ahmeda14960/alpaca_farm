@@ -21,6 +21,16 @@ from transformers.utils.generic import ModelOutput
 
 from .. import common
 
+class RewardConfig(transformers.PretrainedConfig):
+    model_type = "reward_model"
+
+    # Huggingface doesn't allow non-kwargs for `__init__`.
+    def __init__(self, backbone_model_name_or_path=None, **kwargs):
+        super(RewardConfig, self).__init__(**kwargs)
+        self.backbone_model_name_or_path = backbone_model_name_or_path
+        self._name_or_path = backbone_model_name_or_path
+
+
 class EnsembleRewardModel(transformers.PreTrainedModel):
     config_class = RewardConfig
     
@@ -43,16 +53,6 @@ class EnsembleRewardModel(transformers.PreTrainedModel):
         return rewards_vmap
 
 
-class RewardConfig(transformers.PretrainedConfig):
-    model_type = "reward_model"
-
-    # Huggingface doesn't allow non-kwargs for `__init__`.
-    def __init__(self, backbone_model_name_or_path=None, **kwargs):
-        super(RewardConfig, self).__init__(**kwargs)
-        self.backbone_model_name_or_path = backbone_model_name_or_path
-        self._name_or_path = backbone_model_name_or_path
-
-
 class RewardModelOutput(ModelOutput):
     rewards: Tensor = None
 
@@ -73,7 +73,8 @@ class RewardModel(transformers.PreTrainedModel):
     def forward(self, input_ids, attention_mask=None, return_dict=True, **kwargs):
         # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
         # easier to use for later stages of reranking / RL training.
-        outputs = self.backbone_model.model(
+        # outputs = self.backbone_model.model(
+        outputs = self.backbone_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             return_dict=True,
