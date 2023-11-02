@@ -29,8 +29,12 @@ class RewardConfig(transformers.PretrainedConfig):
         super(RewardConfig, self).__init__(**kwargs)
         self.backbone_model_name_or_path = backbone_model_name_or_path
         self._name_or_path = backbone_model_name_or_path
+<<<<<<< HEAD
 
 
+=======
+        
+>>>>>>> main
 class EnsembleRewardModel(transformers.PreTrainedModel):
     config_class = RewardConfig
     
@@ -109,25 +113,3 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
         # TODO(lxuechen): Make returning rewards at all positions and last_hidden_state an option.
         rewards = self.reward_head[head_index](last_hidden_state_at_the_end).squeeze(-1)
         return RewardModelOutput(rewards=rewards) if return_dict else (rewards,)
-
-
-class ensembleRewardModel(transformers.PreTrainedModel):
-    config_class = RewardConfig
-    
-    def __init__(self, config: RewardConfig, num_models: int = 5, **kwargs):
-        super(ensembleRewardModel, self).__init__(config)
-        
-        # Create ensemble of reward models
-        self.models = [RewardModel(config) for _ in range(num_models)]
-        
-        # Combine parameters and buffers for vmap
-        self.fmodel, self.params, self.buffers = functorch.combine_state_for_ensemble(self.models)
-        
-    def forward(self, input_ids, attention_mask=None, return_dict=True, **kwargs):
-        # Forward pass with vmap over models
-        rewards_vmap = functorch.vmap(self.fmodel, in_dims=(0, None, None))(
-            self.params, self.buffers, input_ids, attention_mask
-        )
-        
-        # Rewards will have shape (num_models, batch_size)
-        return rewards_vmap

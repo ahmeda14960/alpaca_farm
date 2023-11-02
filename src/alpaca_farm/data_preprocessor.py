@@ -472,7 +472,6 @@ class DataCollatorForSFTDataset(object):
     tokenizer: transformers.PreTrainedTokenizer
 
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, Tensor]:
-        import ipdb; ipdb.set_trace()
         input_ids, labels = tuple(
             [instance[key] for instance in instances] for key in ("input_ids", "labels")
         )
