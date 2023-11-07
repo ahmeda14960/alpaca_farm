@@ -20,9 +20,9 @@ from typing import List, Literal
 
 import transformers
 
-from alpaca_farm import common, constants, data_utils, logging
+from alpaca_farm import common, constants, data_utils, logging, reward_modeling_trainer
 from alpaca_farm.models import reward_model
-from src.alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics, compute_multi_reward_modeling_metrics
+# from alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics, compute_multi_reward_modeling_metrics
 logger = logging.get_logger(__name__)
 
 
@@ -169,12 +169,12 @@ def main():
         training_args=training_args,
     )
 
-    trainer = EnsembleTrainer(
+    trainer = reward_modeling_trainer.EnsembleTrainer(
         num_heads=4,  # Number of ensemble members (you can adjust this)
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        compute_metrics=compute_multi_reward_modeling_metrics, 
+        compute_metrics=reward_modeling_trainer.compute_multi_reward_modeling_metrics, 
         **data_module,
     )
 

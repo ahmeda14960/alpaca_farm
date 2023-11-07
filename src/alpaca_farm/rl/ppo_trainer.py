@@ -475,7 +475,7 @@ def _make_left_padded_tokenizer(
     **kwargs,
 ) -> transformers.PreTrainedTokenizer:
     tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_name_or_path,
+         "facebook/opt-1.3b",
         cache_dir=cache_dir,
         padding_side="left",
         **kwargs,

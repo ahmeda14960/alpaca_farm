@@ -29,6 +29,7 @@ def main():
 
     parser = transformers.HfArgumentParser((DataArguments, TrainingArguments))
     data_args, training_args = parser.parse_args_into_dataclasses()
+    # import ipdb; ipdb.set_trace()
 
     accelerator = accelerate_patch.MyAccelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,

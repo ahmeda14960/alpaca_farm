@@ -15,30 +15,50 @@
 import contextlib
 import os
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 import transformers
+import torch.nn.functional as F
 import einops
 import torch
 
-from alpaca_farm import common, data_utils, logging, torch_ops
+from alpaca_farm import common, constants, data_utils, logging, torch_ops
 from alpaca_farm.models import reward_model
 from alpaca_farm.reward_modeling_trainer import  EnsembleTrainer, compute_multi_reward_modeling_metrics
 from multi_reward_modeling import ModelArguments, DataArguments, TrainingArguments
 logger = logging.get_logger(__name__)
 
+class TestRewardModel():
+    def __init__(self, num_heads: int = 4):
+        self.backbone_model = torch.nn.Linear()
+        hidden_size = 
+        reward_head = torch.nn.ModuleList([torch.nn.Linear(hidden_size, 1) for i in range(num_heads)])
+        for i in range(num_heads):
+            torch.nn.init.zeros_(reward_head[i].bias)
+        self.reward_head = reward_head.to(next(self.backbone_model.parameters()).device)
 
-@dataclass
-class TestEnsembleTrainer(EnsembleTrainer):
-    def compute_training_loss(self, model, inputs, return_outputs=False):
-        
+    def forward(self, input_ids, head_index, attention_mask=None, return_dict=True):
+        # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
+        # easier to use for later stages of reranking / RL training.
+        outputs = self.backbone_model.model(
+            input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+        )
+        last_hidden_state = outputs.last_hidden_state
+        last_hidden_state_at_the_end = last_hidden_state[:, -1, :]
+        # TODO(lxuechen): Make returning rewards at all positions and last_hidden_state an option.
+        rewards = self.reward_head[head_index](last_hidden_state_at_the_end).squeeze(-1)
+        return rewards
+    
+    def compute_training_loss(self, inputs):
+        losses = []
         # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
         # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
         # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
-        input_ids, attention_mask, index_0, index_1, choice = common.unpack_dict(
-            inputs, keys=("input_ids", "attention_mask", "index_0", "index_1", "choice")
+        input_ids, attention_mask, choice = common.unpack_dict(
+            inputs, keys=("input_ids", "attention_mask", "choice")
         )
-        num_candidates, num_pairs = input_ids.size(1), choice.size(1)
+        num_candidates = input_ids.size(1)
         
         num_per_head = input_ids.size(0)//self.num_heads
         # import ipdb; ipdb.set_trace()
@@ -46,98 +66,59 @@ class TestEnsembleTrainer(EnsembleTrainer):
             split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
             input_ids_i = input_ids[split_per_head]
             attention_mask_i = attention_mask[split_per_head]
-            index_0_i = index_0[split_per_head]
-            index_1_i = index_1[split_per_head]
             choice_i = choice[split_per_head]
 
             input_ids_flat, attention_mask_flat = tuple(
                 einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids_i, attention_mask_i)
             )
             
-            outputs = model(input_ids=input_ids_flat, head_index=i, attention_mask=attention_mask_flat)
+            outputs = self.forward(input_ids=input_ids_flat, head_index=i, attention_mask=attention_mask_flat)
             rewards_flat = outputs.rewards
             rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
 
-            rewards_0, rewards_1 = tuple(
-                torch_ops.batch_select(rewards, index) for index in (index_0_i, index_1_i)
-            )  # Size: (bsz, num_pairs).
-            logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
+            logits = rewards
 
             loss_head = F.binary_cross_entropy_with_logits(logits, choice_i.to(logits.dtype), reduction="mean")
-            loss_head.backward()
-            print("----Working with head " + i + " ----")
+            print("----Working with head " + str(i) + " ----")
             for j in range(self.num_heads):
-                loss_j = torch.autograd.grad(loss_head, model.reward_head[j].weight, allow_unused=True)
+                loss_j = torch.autograd.grad(loss_head, self.reward_head[j].weight, allow_unused=True)
                 if i == j:
-                    print("Loss for head " + j + "should be non-zero: " + loss_j)
+                    print("Loss for head " + str(j) + "should be non-zero: " + str(loss_j))
                 else:
-                    print("Loss for head " + j + "should be 0: " + loss_j)
+                    print("Loss for head " + str(j) + "should be 0: " + str(loss_j))
+            losses.append(loss_head)
 
- 
-
+        # Average the losses from all heads
+        loss = sum(losses) / self.num_heads
+        return loss
 
 def main():
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     os.environ["WANDB_PROJECT"] = training_args.wandb_project
-
-    print(data_args)
-    print(training_args)
-    if training_args.deepspeed is not None:
-        ctx_mgr = contextlib.nullcontext()
-        device_map = None
-        low_cpu_mem_usage = None
-    elif training_args.initialize_model_on_cpu:
-        ctx_mgr = contextlib.nullcontext()
-        device_map = None
-        low_cpu_mem_usage = True
-    else:
-        ctx_mgr = common.staggered_object_creation(
-            local_rank=training_args.local_rank, world_size=training_args.world_size
-        )
-        device_map = {"": training_args.device.index}
-        low_cpu_mem_usage = True
-
-    with ctx_mgr:
-        config = reward_model.RewardConfig(
-            backbone_model_name_or_path=model_args.model_name_or_path
-        )
-        model = reward_model.MultiHeadRewardModel(
-            flash_attn=training_args.flash_attn,
-            fp16=training_args.fp16,
-            bf16=training_args.bf16,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            device_map=device_map,
-            config=config,
-        )
-        common.let_model_save_mem_when_zero_grad(model)
+    _, data_args, training_args = parser.parse_args_into_dataclasses()
+    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "facebook/opt-1.3b",
-        cache_dir=training_args.cache_dir,
-        model_max_length=training_args.model_max_length,
+        cache_dir=constants.DEFAULT_CACHE_DIR,
+        model_max_length=512,
         padding_side="left",  # Ensure reward is always extracted at the last token embedding.
-        use_fast=training_args.use_fast_tokenizer,
+        use_fast=False,
     )
     tokenizer.padding = training_args.padding
-    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     data_module = data_utils.make_binary_reward_modeling_data_module(
         tokenizer=tokenizer,
         data_args=data_args,
         training_args=training_args,
     )
-
-    trainer = TestEnsembleTrainer(
-        num_heads=4,  # Number of ensemble members (you can adjust this)
-        model=model,
-        tokenizer=tokenizer,
-        args=training_args,
-        compute_metrics=compute_multi_reward_modeling_metrics, 
-        **data_module,
-    )
-
-    trainer.train()
+    input_ids, attention_mask, choice = 
+    new_model = TestRewardModel()
+    inputs = {}
+    inputs["input_ids"] = input_ids
+    inputs["attention_mask"] = attention_mask
+    inputs["choice"] = choice
+    return new_model.compute_training_loss(inputs)
 
 
 if __name__ == "__main__":

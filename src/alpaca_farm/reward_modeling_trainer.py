@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict
+from typing import Any, Dict, Union
 
 import einops
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import transformers
 from transformers.trainer_utils import EvalPrediction
@@ -66,6 +67,8 @@ class Trainer(transformers.Trainer):
 class EnsembleTrainer(transformers.Trainer):
     def __init__(self, num_heads=4, *args, **kwargs):
         self.num_heads = num_heads
+        #self.create_accelerator_and_postprocess()
+        #import ipdb; ipdb.set_trace()
         super().__init__(*args, **kwargs)
 
     def compute_training_loss(self, model, inputs, return_outputs=False):
@@ -81,7 +84,7 @@ class EnsembleTrainer(transformers.Trainer):
         num_candidates, num_pairs = input_ids.size(1), choice.size(1)
         
         num_per_head = input_ids.size(0)//self.num_heads
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
         for i in range(self.num_heads):
             split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
             input_ids_i = input_ids[split_per_head]
@@ -158,7 +161,7 @@ class EnsembleTrainer(transformers.Trainer):
         else:
             return loss
 
-    def training_step(self, model, inputs) -> torch.Tensor:
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
 
@@ -189,15 +192,22 @@ class EnsembleTrainer(transformers.Trainer):
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
+        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
+            # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
+            loss = loss / self.args.gradient_accumulation_steps
+
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         elif self.use_apex:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
+        elif self.deepspeed:
+            # loss gets scaled under gradient_accumulation_steps in deepspeed
+            loss = self.deepspeed.backward(loss)
         else:
-            self.accelerator.backward(loss)
+            loss.backward()
 
-        return loss.detach() / self.args.gradient_accumulation_steps
+        return loss.detach()
 # # Example usage
 # trainer = EnsembleTrainer(
 #     model=model,  # Your model
@@ -210,9 +220,12 @@ class EnsembleTrainer(transformers.Trainer):
 # # Training loop
 # trainer.train()
 
-def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
+def compute_multi_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
     logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
+    # import ipdb; ipdb.set_trace()
+    if logits.dim == 2:
+        logits = logits.reshape(logits.shape[0]*logits.shape[1])
     labels = torch.tensor(eval_prediction.label_ids[-1]).squeeze(-1)
     # if labels isn't single dim squeeze again
     if len(labels.shape) > 1:
@@ -235,10 +248,10 @@ def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
         false_positive_rate=false_positive_rate,
     )
 
-def compute_multi_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
+
+def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
     logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
-    logits = logits.reshape(logits.shape[0]*logits.shape[1])
     labels = torch.tensor(eval_prediction.label_ids[-1]).squeeze(-1)
     # if labels isn't single dim squeeze again
     if len(labels.shape) > 1:

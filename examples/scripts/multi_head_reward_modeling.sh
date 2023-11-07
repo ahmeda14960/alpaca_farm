@@ -1,4 +1,4 @@
-output_dir=$1
+ output_dir=$1
 run_name=$2
 model_name_or_path=$3
 dataset_name=${4:-"alpaca_noisy_multi_preference"}

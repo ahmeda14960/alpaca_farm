@@ -4,7 +4,7 @@ reward_model_name_or_path=$3
 policy_model_name_or_path=$4
 kl_coef=${5:-0.0067}
 
-config_file="./examples/accelerate_configs/rlhf_ppo_fsdp_llama_8gpu.yaml"
+config_file="./examples/accelerate_configs/rlhf_ppo_fsdp_llama_8gpu_debug.yaml"
 
 accelerate launch --config_file "${config_file}" examples/rlhf_ppo_mh.py \
   --run_name "${run_name}" \
@@ -23,4 +23,4 @@ accelerate launch --config_file "${config_file}" examples/rlhf_ppo_mh.py \
   --total_epochs 10 \
   --flash_attn True \
   --prompt_dict_path "./examples/prompts/v0_inputs_noinputs.json" \
-  --save_steps 20 \
+  --save_steps 20 
