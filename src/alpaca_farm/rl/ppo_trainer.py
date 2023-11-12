@@ -509,10 +509,11 @@ def make_models(
     tokenizer: transformers.PreTrainedTokenizer,
     args,
     accelerator: accelerate.Accelerator,
+    multi_head: bool = False,
 ) -> dict:
     def make_generative_policy():
         base_model = common.make_generative_lm(
-            model_name_or_path=args.policy_model_name_or_path,
+            model_name_or_path="facebook/opt-1.3b",
             flash_attn=args.flash_attn,
             mixed_precision=accelerator.mixed_precision,
             cache_dir=args.cache_dir,
@@ -566,7 +567,7 @@ def make_models(
     if args.init_value_with_reward:
         # Initialize value from reward model a la OAI.
         logger.warning("Initializing value model with reward model.")
-        if not self.multi_head: 
+        if not multi_head: 
             value_model = rl_models.make_value_with_base_model(
                 args, make_reward_model().backbone_model, tokenizer
             )

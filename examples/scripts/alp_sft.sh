@@ -10,14 +10,14 @@ torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
   --bf16 True \
   --seed 42 \
   --dataset_name "alpaca_instructions" \
-  --output_dir "/scr-ssd/ahmedah/alp/opt1b-alp-sft" \
+  --output_dir "~/out/alp_sft" \
   --num_train_epochs 3 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
   --gradient_accumulation_steps 16 \
   --eval_steps 100 \
   --save_strategy "steps" \
-  --save_steps 1000000000 \
+  --save_steps 100 \
   --save_total_limit 1 \
   --learning_rate 2e-5 \
   --weight_decay 0.0 \
@@ -27,7 +27,7 @@ torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
   --logging_steps 10 \
   --wandb_project "alpaca_farm" \
   --run_name "${run_name}" \
-  --tf32 True \
+  --tf32 False \
   --flash_attn True \
   --model_max_length 512 \
   --ddp_timeout 1800 \

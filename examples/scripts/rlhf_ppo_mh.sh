@@ -12,7 +12,7 @@ accelerate launch --config_file "${config_file}" examples/rlhf_ppo_mh.py \
   --rollout_per_device_batch_size 32 \
   --per_device_eval_batch_size 32 \
   --output_dir "${output_dir}" \
-  --reward_model_name_or_path "${reward_model_name_or_path}" \
+  --reward_model_name_or_path "facebook/opt-1.3b" \
   --policy_model_name_or_path "${policy_model_name_or_path}" \
   --init_value_with_reward True \
   --rollout_batch_size 512 \

@@ -29,6 +29,6 @@ torchrun --nproc_per_node=1 --master_port=1234 examples/multi_head_unit_test.py 
   --run_name "${run_name}" \
   --fsdp "full_shard auto_wrap" \
   --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
-  --tf32 True \
+  --tf32 False \
   --flash_attn True \
   --ddp_timeout 1800

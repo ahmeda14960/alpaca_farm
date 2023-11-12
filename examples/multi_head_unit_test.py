@@ -31,8 +31,8 @@ logger = logging.get_logger(__name__)
 
 class TestRewardModel():
     def __init__(self, num_heads: int = 4):
-        self.backbone_model = torch.nn.Linear()
-        hidden_size = 
+        self.backbone_model = torch.nn.Linear(256, 256)
+        hidden_size = 256
         reward_head = torch.nn.ModuleList([torch.nn.Linear(hidden_size, 1) for i in range(num_heads)])
         for i in range(num_heads):
             torch.nn.init.zeros_(reward_head[i].bias)
@@ -55,9 +55,10 @@ class TestRewardModel():
         # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
         # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
         # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
-        input_ids, attention_mask, choice = common.unpack_dict(
-            inputs, keys=("input_ids", "attention_mask", "choice")
+        input_ids, attention_mask, index_0, index_1, choice = common.unpack_dict(
+            inputs, keys=("input_ids", "attention_mask", "index_0", "index_1", "choice")
         )
+        print(inputs)
         num_candidates = input_ids.size(1)
         
         num_per_head = input_ids.size(0)//self.num_heads
@@ -66,6 +67,8 @@ class TestRewardModel():
             split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
             input_ids_i = input_ids[split_per_head]
             attention_mask_i = attention_mask[split_per_head]
+            index_0_i = index_0[split_per_head]
+            index_1_i = index_1[split_per_head]
             choice_i = choice[split_per_head]
 
             input_ids_flat, attention_mask_flat = tuple(
@@ -76,7 +79,10 @@ class TestRewardModel():
             rewards_flat = outputs.rewards
             rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
 
-            logits = rewards
+            rewards_0, rewards_1 = tuple(
+                torch_ops.batch_select(rewards, index) for index in (index_0_i, index_1_i)
+            )  # Size: (bsz, num_pairs).
+            logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
 
             loss_head = F.binary_cross_entropy_with_logits(logits, choice_i.to(logits.dtype), reduction="mean")
             print("----Working with head " + str(i) + " ----")
@@ -96,8 +102,8 @@ def main():
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )
-    os.environ["WANDB_PROJECT"] = training_args.wandb_project
     _, data_args, training_args = parser.parse_args_into_dataclasses()
+    os.environ["WANDB_PROJECT"] = training_args.wandb_project
     data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "facebook/opt-1.3b",
@@ -112,12 +118,16 @@ def main():
         data_args=data_args,
         training_args=training_args,
     )
-    input_ids, attention_mask, choice = 
+    # import ipdb; ipdb.set_trace()
+    train_dataloader = torch.utils.data.DataLoader(data_module["train_dataset"], batch_size=256, shuffle=True)
+    dataiter = iter(train_dataloader)
+    inputs = next(dataiter)
     new_model = TestRewardModel()
-    inputs = {}
-    inputs["input_ids"] = input_ids
-    inputs["attention_mask"] = attention_mask
-    inputs["choice"] = choice
+    # inputs = {}
+    # print(input_ids)
+    # inputs["input_ids"] = input_ids
+    # inputs["attention_mask"] = attention_mask
+    # inputs["choice"] = choice
     return new_model.compute_training_loss(inputs)
 
 
