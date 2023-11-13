@@ -1,0 +1,13 @@
+python examples/best_of_n.py \
+  --task "run_best_of_n" \
+  --decoder_name_or_path "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/dummy_sft_opt"\
+  --scorer_name_or_path "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/dummy_reward_fast" \
+  --num_return_sequences 2 \
+  --per_device_batch_size 32 \
+  --split "eval" \
+  --mixed_precision "bf16" \
+  --tf32 True \
+  --flash_attn True \
+  --output_path "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results/b-o-n_output/output.json" \
+  --rerank_top_k 2 \
+  --dump_all True

@@ -9,10 +9,10 @@ torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
   --fp16 False \
   --bf16 True \
   --seed $run_number \
-  --output_dir "/scr-ssd/ahmedah/alp/opt7b-sft-debug-alpaca" \
-  --num_train_epochs 3 \
+  --output_dir "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results" \
+  --num_train_epochs 1 \
   --per_device_train_batch_size 1 \
-  --per_device_eval_batch_size 4 \
+  --per_device_eval_batch_size 1 \
   --gradient_accumulation_steps 16 \
   --eval_steps 100 \
   --save_strategy "steps" \
@@ -28,7 +28,7 @@ torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
   --run_name "${run_name}" \
   --tf32 True \
   --flash_attn True \
-  --model_max_length 512 \
+  --model_max_length 2048 \
   --ddp_timeout 1800 \
   --fsdp "full_shard auto_wrap" \
   --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \

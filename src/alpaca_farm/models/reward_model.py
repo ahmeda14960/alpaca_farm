@@ -72,7 +72,13 @@ class RewardModel(transformers.PreTrainedModel):
     def forward(self, input_ids, attention_mask=None, return_dict=True, **kwargs):
         # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
         # easier to use for later stages of reranking / RL training.
-        outputs = self.backbone_model.model(
+        try:
+            model = self.backbone_model.model
+        except AttributeError: 
+            model = self.backbone_model
+            print('Warning: self.backbone_model.model not found for reward model, using self.backbone_model instead')
+        
+        outputs = model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             return_dict=True,

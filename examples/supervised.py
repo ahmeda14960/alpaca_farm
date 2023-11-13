@@ -240,6 +240,13 @@ class CustomTrainer(Trainer):
             loss, logits, labels = self.prediction_step(
                 model, inputs, prediction_loss_only, ignore_keys=ignore_keys
             )
+            # if torch.isnan(loss):
+            #      print ('NaN')
+            #      import ipdb; ipdb.set_trace()
+            # else: 
+            #     print ('fine')
+            #     import ipdb; ipdb.set_trace()
+
             inputs_decode = (
                 self._prepare_input(inputs["input_ids"])
                 if args.include_inputs_for_metrics
@@ -414,6 +421,7 @@ class CustomTrainer(Trainer):
 
         if all_losses is not None:
             # Nan values from losses
+            # import ipdb; ipdb.set_trace()
             print(f' nan samples found ! {np.sum(np.isnan(all_losses))}')
             metrics[f"{metric_key_prefix}_loss"] = np.nanmean(all_losses).item()
         if hasattr(self, "jit_compilation_time"):
@@ -554,12 +562,14 @@ def main():
             device_map=device_map,
         )
         common.let_model_save_mem_when_zero_grad(model)
-
+    
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
-        model_max_length=training_args.model_max_length,
-        padding_side="right",  # Ensures properly masking out the source tokens.
+        model_max_length = 2048, #changed manually
+        # model_max_length=training_args.model_max_length,
+         padding_side="right",  # Ensures properly masking out the source tokens.
+        # padding_side="left",
         use_fast=training_args.use_fast_tokenizer,
     )
     tokenizer.padding = training_args.padding

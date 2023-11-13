@@ -191,6 +191,8 @@ def run_best_of_n(
     mixed_precision=None,
     tf32=False,
     flash_attn=False,
+    rerank_top_k=1,
+    dump_all=False
 ):
     """Chain together decoding and rerank."""
     decode_return_list_dict_data = run_decode(
@@ -208,10 +210,12 @@ def run_best_of_n(
     rerank_return_list_dict_data = run_rerank(
         list_dict_data_or_path=decode_return_list_dict_data,
         scorer_name_or_path=scorer_name_or_path,
+        output_path = output_path,
         per_device_batch_size=per_device_batch_size,
         mixed_precision=mixed_precision,
         tf32=tf32,
         flash_attn=flash_attn,
+        rerank_top_k = rerank_top_k
     )
 
     # Convert best-k-of-n into best-of-n.
@@ -229,8 +233,12 @@ def run_best_of_n(
         )
     ]
 
-    if output_path is not None and distributed_utils.is_main_process():
-        utils.jdump(return_list_dict_data, output_path)
+    # call to run_rank above already dumps multiple (ranked) completions per prompt to output_path
+    # setting dump_all = True prevents that output from being overwritten
+    if not dump_all:
+        if output_path is not None and distributed_utils.is_main_process():
+            utils.jdump(return_list_dict_data, output_path)
+
 
     return return_list_dict_data
 
