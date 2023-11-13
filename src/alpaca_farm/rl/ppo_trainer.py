@@ -596,7 +596,7 @@ def make_models(
     ref_policy.requires_grad_(False)
     ref_policy = accelerator.prepare(ref_policy)  # noqa
 
-    if not self.multi_head:
+    if not multi_head:
         reward_model = make_reward_model()
     else:
         reward_model = make_ensemble_reward_model()

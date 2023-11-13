@@ -10,14 +10,14 @@ torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
   --bf16 True \
   --seed 42 \
   --dataset_name "alpaca_instructions" \
-  --output_dir "~/out/alp_sft" \
-  --num_train_epochs 3 \
+  --output_dir "/home/azureuser/out/alp_opt_sft" \
+  --num_train_epochs 0.1 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 4 \
   --gradient_accumulation_steps 16 \
   --eval_steps 100 \
   --save_strategy "steps" \
-  --save_steps 100 \
+  --save_steps 1000000 \
   --save_total_limit 1 \
   --learning_rate 2e-5 \
   --weight_decay 0.0 \
@@ -25,12 +25,13 @@ torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
   --lr_scheduler_type "cosine" \
   --evaluation_strategy "steps" \
   --logging_steps 10 \
-  --wandb_project "alpaca_farm" \
+  --wandb_project "alpaca_farm_debug" \
   --run_name "${run_name}" \
-  --tf32 False \
+  --tf32 True \
   --flash_attn True \
   --model_max_length 512 \
   --ddp_timeout 1800 \
-  --fsdp "full_shard auto_wrap" \
-  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
-  --train_splits "sft"
+  --train_splits "sft" \
+  #--fsdp "full_shard auto_wrap" \
+  #--fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
+  
