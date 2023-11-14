@@ -198,7 +198,6 @@ def rerank_sequences_with_huggingface(
         tf32=tf32,
         flash_attn=flash_attn,
     )
-    import ipdb; ipdb.set_trace()
     rewards = einops.rearrange(
         torch.tensor(rewards), "(b m) -> b m", m=len(sequences[0])
     )
