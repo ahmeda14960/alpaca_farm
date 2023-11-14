@@ -32,9 +32,16 @@ from transformers.debug_utils import DebugOption
 from transformers.deepspeed import deepspeed_init
 import torch
 import numpy as np
+
 if is_torch_tpu_available(check_device=False):
     import torch_xla.core.xla_model as xm
-from transformers.trainer_pt_utils import find_batch_size, nested_numpify, nested_concat, IterableDatasetShard, nested_truncate
+from transformers.trainer_pt_utils import (
+    find_batch_size,
+    nested_numpify,
+    nested_concat,
+    IterableDatasetShard,
+    nested_truncate,
+)
 from transformers.trainer_utils import (
     PREFIX_CHECKPOINT_DIR,
     BestRun,
@@ -71,7 +78,6 @@ class CustomTrainer(Trainer):
     # run super init and inherit all of its methods
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
 
     def evaluate(
         self,
@@ -149,7 +155,6 @@ class CustomTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return output.metrics
-
 
     def evaluation_loop(
         self,
@@ -243,7 +248,7 @@ class CustomTrainer(Trainer):
             # if torch.isnan(loss):
             #      print ('NaN')
             #      import ipdb; ipdb.set_trace()
-            # else: 
+            # else:
             #     print ('fine')
             #     import ipdb; ipdb.set_trace()
 
@@ -308,7 +313,9 @@ class CustomTrainer(Trainer):
                         else np.concatenate((all_losses, losses), axis=0)
                     )
                     if all_losses == 16055:
-                        import ipdb; ipdb.set_trace()
+                        import ipdb
+
+                        ipdb.set_trace()
                 if preds_host is not None:
                     logits = nested_numpify(preds_host)
                     all_preds = (
@@ -321,7 +328,9 @@ class CustomTrainer(Trainer):
                     all_inputs = (
                         inputs_decode
                         if all_inputs is None
-                        else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                        else nested_concat(
+                            all_inputs, inputs_decode, padding_index=-100
+                        )
                     )
                 if labels_host is not None:
                     labels = nested_numpify(labels_host)
@@ -332,7 +341,12 @@ class CustomTrainer(Trainer):
                     )
 
                 # Set back to None to begin a new accumulation
-                losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+                losses_host, preds_host, inputs_host, labels_host = (
+                    None,
+                    None,
+                    None,
+                    None,
+                )
 
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of the evaluation loop
@@ -422,10 +436,12 @@ class CustomTrainer(Trainer):
         if all_losses is not None:
             # Nan values from losses
             # import ipdb; ipdb.set_trace()
-            print(f' nan samples found ! {np.sum(np.isnan(all_losses))}')
+            print(f" nan samples found ! {np.sum(np.isnan(all_losses))}")
             metrics[f"{metric_key_prefix}_loss"] = np.nanmean(all_losses).item()
         if hasattr(self, "jit_compilation_time"):
-            metrics[f"{metric_key_prefix}_jit_compilation_time"] = self.jit_compilation_time
+            metrics[
+                f"{metric_key_prefix}_jit_compilation_time"
+            ] = self.jit_compilation_time
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
@@ -562,13 +578,13 @@ def main():
             device_map=device_map,
         )
         common.let_model_save_mem_when_zero_grad(model)
-    
+
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
-        model_max_length = 2048, #changed manually
+        model_max_length=2048,  # changed manually
         # model_max_length=training_args.model_max_length,
-         padding_side="right",  # Ensures properly masking out the source tokens.
+        padding_side="right",  # Ensures properly masking out the source tokens.
         # padding_side="left",
         use_fast=training_args.use_fast_tokenizer,
     )
@@ -587,7 +603,11 @@ def main():
     utils.stable_resize_token_embeddings_and_tokenizer(
         model, tokenizer, special_tokens_dict
     )
-    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
+    data_args.prompt_dict_path = (
+        pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json"
+        if "SHP" in data_args.dataset_name
+        else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
+    )
     data_module: dict = data_utils.make_supervised_data_module(
         tokenizer=tokenizer,
         data_args=data_args,

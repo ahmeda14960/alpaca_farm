@@ -65,11 +65,9 @@ class TrainingArguments(transformers.TrainingArguments):
             "e.g., due to outputting incomplete sentences for given context window."
         },
     )
-    reward_model_name_or_paths:  Optional[List[str]] = field(
+    reward_model_name_or_paths: Optional[List[str]] = field(
         default_factory=lambda: None,
-        metadata={
-            "help": "Reward model paths if ensembling. "
-        },
+        metadata={"help": "Reward model paths if ensembling. "},
     )
     total_epochs: int = field(default=10)
     rollout_batch_size: int = field(default=512)
