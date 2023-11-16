@@ -1,10 +1,20 @@
 #output_dir=$1
 run_number=$1
-run_name=$2
+run_name=azure_sft
 model_name_or_path=$3
 
+<<<<<<< Updated upstream
 #CUDA_VISIBLE_DEVICES=$run_number 
 torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
+=======
+current_datetime=$(date +"%Y%m%d%H%M%S")
+output_dir=/home/azureuser/out/1b_alpsft_${current_datetime}
+
+mkdir -p $output_dir
+
+#CUDA_VISIBLE_DEVICES=$run_number 
+torchrun --nproc_per_node=4 --master_port=1242 examples/supervised.py \
+>>>>>>> Stashed changes
   --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \

@@ -170,7 +170,7 @@ def main():
     )
 
     trainer = reward_modeling_trainer.EnsembleTrainer(
-        num_heads=4,  # Number of ensemble members (you can adjust this)
+        num_heads=3,  # Number of ensemble members (you can adjust this)
         model=model,
         tokenizer=tokenizer,
         args=training_args,

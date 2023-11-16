@@ -1,20 +1,26 @@
 run_number=$1
 # add line that makes the output dir
+# mkdir -p "/scr-ssd/ahmedah/debug-shp-rwl1b-${run_number}/"
+
+current_datetime=$(date +"%Y%m%d%H%M%S")
+output_dir=/home/azureuser/out/alp_rw_opt_${current_datetime}
+mkdir -p $output_dir
 
 GPUS=4
 GA=8
 #CUDA_VISIBLE_DEVICES=$run_number 
-torchrun --nproc_per_node=1 --master_port=1343 examples/reward_modeling.py \
+
+torchrun --nproc_per_node=4 --master_port=1343 examples/reward_modeling.py \
   --fp16 False \
   --bf16 True \
-  --seed 42 \
-  --model_name_or_path "/home/azureuser/out/alp_opt_sft/" \
+  --seed 0 \
+  --model_name_or_path "//home/azureuser/out/opt_1b_alpsft_20231116213715" \
   --dataset_name "alpaca_human_preference" \
-  --output_dir "/home/azureuser/out/alp_rwl/" \
+  --output_dir "$output_dir" \
   --model_max_length 512 \
-  --num_train_epochs 0.1 \
-  --per_device_train_batch_size 2 \
-  --per_device_eval_batch_size 4 \
+  --num_train_epochs 1 \
+  --per_device_train_batch_size 1 \
+  --per_device_eval_batch_size 8 \
   --gradient_accumulation_steps 2 \
   --eval_steps 100 \
   --save_strategy "steps" \
@@ -31,7 +37,7 @@ torchrun --nproc_per_node=1 --master_port=1343 examples/reward_modeling.py \
   --tf32 True \
   --flash_attn True \
   --ddp_timeout 1800 \
-  --initialize_model_on_cpu True
-  #--fsdp "full_shard auto_wrap" \
-  #--fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" \
+  --initialize_model_on_cpu True \
+  --fsdp "full_shard auto_wrap" \
+  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" 
  

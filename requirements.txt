@@ -5,6 +5,7 @@ nltk
 accelerate>=0.18.0
 tabulate
 transformers==4.29.2
+<<<<<<< Updated upstream
 ipdb
 statsmodels
 tiktoken>=0.3.2
@@ -20,3 +21,14 @@ gpustat
 alpaca_eval>=0.2.8
 flash_attn==v2.0.6
 # apex version installed is in readme
+=======
+triton==2.0.0
+typing_extensions==4.4.0
+tzdata==2023.3
+urllib3==1.26.13
+wandb==0.15.12
+wcwidth==0.2.8
+xxhash==3.4.1
+yarl==1.9.2
+#flash-attn==2.3.2
+>>>>>>> Stashed changes

@@ -86,15 +86,15 @@ class EnsembleTrainer(transformers.Trainer):
         num_per_head = input_ids.size(0)//self.num_heads
         # import ipdb; ipdb.set_trace()
         for i in range(self.num_heads):
-            split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
-            input_ids_i = input_ids[split_per_head]
-            attention_mask_i = attention_mask[split_per_head]
-            index_0_i = index_0[split_per_head]
-            index_1_i = index_1[split_per_head]
-            choice_i = choice[split_per_head]
+            # split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
+            # input_ids_i = input_ids[split_per_head]
+            # attention_mask_i = attention_mask[split_per_head]
+            # index_0_i = index_0[split_per_head]
+            # index_1_i = index_1[split_per_head]
+            # choice_i = choice[split_per_head]
 
             input_ids_flat, attention_mask_flat = tuple(
-                einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids_i, attention_mask_i)
+                einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids, attention_mask)
             )
             
             outputs = model(input_ids=input_ids_flat, head_index=i, attention_mask=attention_mask_flat)
@@ -102,11 +102,11 @@ class EnsembleTrainer(transformers.Trainer):
             rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
 
             rewards_0, rewards_1 = tuple(
-                torch_ops.batch_select(rewards, index) for index in (index_0_i, index_1_i)
+                torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
             )  # Size: (bsz, num_pairs).
             logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
 
-            loss_head = F.binary_cross_entropy_with_logits(logits, choice_i.to(logits.dtype), reduction="mean")
+            loss_head = F.binary_cross_entropy_with_logits(logits, choice.to(logits.dtype), reduction="mean")
 
             losses.append(loss_head)
             logits_list.append(logits)
@@ -132,7 +132,7 @@ class EnsembleTrainer(transformers.Trainer):
         num_candidates, num_pairs = input_ids.size(1), choice.size(1)
         
         num_per_head = input_ids.size(0)//self.num_heads
-    
+        # import ipdb; ipdb.set_trace()
         for i in range(self.num_heads):
             input_ids_flat, attention_mask_flat = tuple(
                 einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids, attention_mask)
@@ -154,10 +154,10 @@ class EnsembleTrainer(transformers.Trainer):
 
         # Average the losses from all heads
         loss = sum(losses) / self.num_heads
-        logits = sum(logits_list) / self.num_heads
-
+        # logits = sum(logits_list) / self.num_heads
+        
         if return_outputs:
-            return (loss, dict(logits=logits))  # Return logits from all heads
+            return (loss, dict(logits=logits_list))  # Return logits from all heads
         else:
             return loss
 
@@ -222,31 +222,42 @@ class EnsembleTrainer(transformers.Trainer):
 
 def compute_multi_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
     # eval_prediction.label_ids is a tuple that matches up with `training_args.label_names`.
-    logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
     # import ipdb; ipdb.set_trace()
-    if logits.dim == 2:
-        logits = logits.reshape(logits.shape[0]*logits.shape[1])
+    logits = torch.tensor(eval_prediction.predictions).squeeze(-1)
     labels = torch.tensor(eval_prediction.label_ids[-1]).squeeze(-1)
-    # if labels isn't single dim squeeze again
-    if len(labels.shape) > 1:
-        labels = labels.squeeze(-1)
-    predictions = (logits >= 0.0).long()
-    accuracy = predictions.eq(labels).float().mean().item()
-    label_positive_rate = (labels == 1).float().mean().item()
-    positive_rate = (predictions == 1).float().mean().item()
-    true_positive_rate = (
-        predictions * labels
-    ).float().sum().item() / labels.sum().item()
-    false_positive_rate = (predictions * (1 - labels)).float().sum().item() / (
-        1 - labels
-    ).sum().item()
-    return dict(
-        accuracy=accuracy,
-        label_positive_rate=label_positive_rate,
-        positive_rate=positive_rate,
-        true_positive_rate=true_positive_rate,
-        false_positive_rate=false_positive_rate,
-    )
+    if logits.dim() == 1: #one-head
+        logits = logits.reshape(1, -1)
+    #labels = labels.reshape(logits.shape[0], -1)
+    labels = labels.view(1,-1).repeat(logits.shape[0], 1)
+    metric_dict = {}
+    for i in range(logits.shape[0]):
+        
+        # if logits.dim == 2:
+        #     logits = logits.reshape(logits.shape[0]*logits.shape[1])
+        logits_head = logits[i]
+        labels_head = labels[i]
+        # if labels isn't single dim squeeze again
+        if len(labels_head.shape) > 1:
+            labels_head = labels_head.squeeze(-1)
+        predictions = (logits_head >= 0.0).long()
+        metric_dict["accuracy_" + str(i)] = predictions.eq(labels_head).float().mean().item()
+        metric_dict["label_positive_rate_" + str(i)] = (labels_head == 1).float().mean().item()
+        metric_dict["positive_rate_" + str(i)] = (predictions == 1).float().mean().item()
+        metric_dict["true_positive_rate_" + str(i)] = (
+            predictions * labels_head
+        ).float().sum().item() / labels_head.sum().item()
+        metric_dict["false_positive_rate_" + str(i)] = (predictions * (1 - labels_head)).float().sum().item() / (
+            1 - labels_head
+        ).sum().item()
+    return metric_dict
+    # dict(
+    #     accuracy=accuracy,
+    #     label_positive_rate=label_positive_rate,
+    #     positive_rate=positive_rate,
+    #     true_positive_rate=true_positive_rate,
+    #     false_positive_rate=false_positive_rate,
+    #     dummy=0,
+    # )
 
 
 def compute_reward_modeling_metrics(eval_prediction: EvalPrediction) -> Dict:
