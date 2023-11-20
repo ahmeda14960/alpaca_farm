@@ -45,7 +45,7 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
         super(MultiHeadRewardModel, self).__init__(config)
         self.backbone_model = common.make_generative_lm(config.backbone_model_name_or_path, **kwargs)
         hidden_size = common.get_transformer_hidden_size(self.backbone_model)
-        reward_head = torch.nn.ModuleList([nn.Linear(hidden_size, 1) for i in range(num_heads)])
+        reward_head = torch.nn.ModuleList([torch.nn.Linear(hidden_size, 1) for i in range(num_heads)])
         for i in range(num_heads):
             torch.nn.init.zeros_(reward_head[i].bias)
         self.reward_head = reward_head.to(next(self.backbone_model.parameters()).device)
@@ -63,13 +63,12 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
         return RewardModelOutput(rewards=rewards) if return_dict else (rewards,)
     
 def compute_training_loss(inputs, model, num_heads):
-    import ipdb; ipdb.set_trace()
     losses = []
     # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
     # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
     # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
-    input_ids, index_0, attention_mask, index_1, choice = common.unpack_dict(
-        inputs, keys=("input_ids", "index_0", "attention_mask", "index_1", "choice")
+    input_ids, index_0, index_1, choice = common.unpack_dict(
+        inputs, keys=("input_ids", "index_0", "index_1", "choice")
     )
     print(input_ids.shape)
     
@@ -89,14 +88,17 @@ def compute_training_loss(inputs, model, num_heads):
         #     einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids, attention_mask)
         # )
         
-        outputs = model.forward(input_ids=input_ids, head_index=i, attention_mask=attention_mask)
-        rewards = outputs.rewards
-        rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
+        attention_mask = (torch.triu(torch.ones(inputs["input_ids"].shape[1], inputs["input_ids"].shape[0])) == 1).transpose(0, 1)
+        attention_mask = attention_mask.bfloat16().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
 
-        rewards_0, rewards_1 = tuple(
-            torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
-        )  # Size: (bsz, num_pairs).
-        logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
+        outputs = model.forward(input_ids=input_ids, head_index=i, attention_mask=attention_mask)
+        logits = outputs.rewards
+        # rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
+
+        # rewards_0, rewards_1 = tuple(
+        #     torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
+        # )  # Size: (bsz, num_pairs).
+        # logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
 
         loss_head = F.binary_cross_entropy_with_logits(logits, choice.to(logits.dtype), reduction="mean")
         print("----Working with head " + str(i) + " ----")
@@ -138,7 +140,8 @@ def main():
     dataiter = iter(train_dataloader)
     mid_inputs = next(dataiter)
     num_heads = 4
-    # new_model = MultiHeadRewardModel(RewardConfig, num_heads)
+    rew_config = RewardConfig(backbone_model_name_or_path="//home/azureuser/out/opt_1b_alpsft_20231116213715")
+    new_model = MultiHeadRewardModel(flash_attn=True, fp16=False, bf16=True, low_cpu_mem_usage=True, device_map=None, config=rew_config, num_heads=num_heads)
     inputs = {}
     import ipdb; ipdb.set_trace()
     print(mid_inputs)
@@ -146,9 +149,7 @@ def main():
     inputs["choice"] = mid_inputs["choice"][0]
     inputs["index_0"] = mid_inputs["index_0"][0]
     inputs["index_1"] = mid_inputs["index_1"][0]
-    attention_mask = (torch.triu(torch.ones(input_ids.shape[0], input_ids.shape[0])) == 1).transpose(0, 1)
-    inputs["attention_mask"] = attention_mask.float().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
-    return new_model.compute_training_loss(inputs, new_model, num_heads)
+    return compute_training_loss(inputs, new_model, num_heads)
 
 
 if __name__ == "__main__":
