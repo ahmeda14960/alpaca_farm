@@ -32,7 +32,7 @@ torchrun --nproc_per_node=4 --master_port=1343 examples/multi_reward_modeling.py
   --evaluation_strategy "steps" \
   --logging_steps 10 \
   --wandb_project "alpaca_farm_debug" \
-  --run_name "alp-rwl-opt1b-multi-part2" \
+  --run_name "alp-rwl-opt1b-multi-10heads" \
   --tf32 True \
   --flash_attn True \
   --ddp_timeout 1800 \

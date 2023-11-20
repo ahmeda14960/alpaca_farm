@@ -29,74 +29,88 @@ from alpaca_farm.reward_modeling_trainer import  EnsembleTrainer, compute_multi_
 from multi_reward_modeling import ModelArguments, DataArguments, TrainingArguments
 logger = logging.get_logger(__name__)
 
-class TestRewardModel():
-    def __init__(self, num_heads: int = 4):
-        self.backbone_model = torch.nn.Linear(256, 256)
-        hidden_size = 256
-        reward_head = torch.nn.ModuleList([torch.nn.Linear(hidden_size, 1) for i in range(num_heads)])
+class RewardConfig(transformers.PretrainedConfig):
+    model_type = "reward_model"
+
+    # Huggingface doesn't allow non-kwargs for `__init__`.
+    def __init__(self, backbone_model_name_or_path=None, **kwargs):
+        super(RewardConfig, self).__init__(**kwargs)
+        self.backbone_model_name_or_path = backbone_model_name_or_path
+        self._name_or_path = backbone_model_name_or_path
+
+class MultiHeadRewardModel(transformers.PreTrainedModel):
+    config_class = RewardConfig
+
+    def __init__(self, config: RewardConfig, num_heads: int = 4, **kwargs):
+        super(MultiHeadRewardModel, self).__init__(config)
+        self.backbone_model = common.make_generative_lm(config.backbone_model_name_or_path, **kwargs)
+        hidden_size = common.get_transformer_hidden_size(self.backbone_model)
+        reward_head = torch.nn.ModuleList([nn.Linear(hidden_size, 1) for i in range(num_heads)])
         for i in range(num_heads):
             torch.nn.init.zeros_(reward_head[i].bias)
         self.reward_head = reward_head.to(next(self.backbone_model.parameters()).device)
 
-    def forward(self, input_ids, head_index, attention_mask=None, return_dict=True):
+    def forward(self, input_ids, head_index, attention_mask=None, return_dict=True, **kwargs):
         # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
         # easier to use for later stages of reranking / RL training.
         outputs = self.backbone_model.model(
-            input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+            input_ids=input_ids, attention_mask=attention_mask, return_dict=True, **kwargs
         )
         last_hidden_state = outputs.last_hidden_state
         last_hidden_state_at_the_end = last_hidden_state[:, -1, :]
         # TODO(lxuechen): Make returning rewards at all positions and last_hidden_state an option.
         rewards = self.reward_head[head_index](last_hidden_state_at_the_end).squeeze(-1)
-        return rewards
+        return RewardModelOutput(rewards=rewards) if return_dict else (rewards,)
     
-    def compute_training_loss(self, inputs):
-        losses = []
-        # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
-        # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
-        # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
-        input_ids, attention_mask, index_0, index_1, choice = common.unpack_dict(
-            inputs, keys=("input_ids", "attention_mask", "index_0", "index_1", "choice")
-        )
-        print(inputs)
-        num_candidates = input_ids.size(1)
+def compute_training_loss(inputs, model, num_heads):
+    import ipdb; ipdb.set_trace()
+    losses = []
+    # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
+    # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
+    # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
+    input_ids, index_0, attention_mask, index_1, choice = common.unpack_dict(
+        inputs, keys=("input_ids", "index_0", "attention_mask", "index_1", "choice")
+    )
+    print(input_ids.shape)
+    
+    num_candidates = input_ids.size(1)
+    
+    num_per_head = input_ids.size(0)//num_heads
+    # import ipdb; ipdb.set_trace()
+    for i in range(num_heads):
+        # split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
+        # input_ids_i = input_ids[split_per_head]
+        # attention_mask_i = attention_mask[split_per_head]
+        # index_0_i = index_0[split_per_head]
+        # index_1_i = index_1[split_per_head]
+        # choice_i = choice[split_per_head]
+
+        # input_ids_flat, attention_mask_flat = tuple(
+        #     einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids, attention_mask)
+        # )
         
-        num_per_head = input_ids.size(0)//self.num_heads
-        # import ipdb; ipdb.set_trace()
-        for i in range(self.num_heads):
-            split_per_head = torch.randint(low=0, high=input_ids.size(0), size=(num_per_head,))
-            input_ids_i = input_ids[split_per_head]
-            attention_mask_i = attention_mask[split_per_head]
-            index_0_i = index_0[split_per_head]
-            index_1_i = index_1[split_per_head]
-            choice_i = choice[split_per_head]
+        outputs = model.forward(input_ids=input_ids, head_index=i, attention_mask=attention_mask)
+        rewards = outputs.rewards
+        rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
 
-            input_ids_flat, attention_mask_flat = tuple(
-                einops.rearrange(x, "b c l -> (b c) l") for x in (input_ids_i, attention_mask_i)
-            )
-            
-            outputs = self.forward(input_ids=input_ids_flat, head_index=i, attention_mask=attention_mask_flat)
-            rewards_flat = outputs.rewards
-            rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
+        rewards_0, rewards_1 = tuple(
+            torch_ops.batch_select(rewards, index) for index in (index_0, index_1)
+        )  # Size: (bsz, num_pairs).
+        logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
 
-            rewards_0, rewards_1 = tuple(
-                torch_ops.batch_select(rewards, index) for index in (index_0_i, index_1_i)
-            )  # Size: (bsz, num_pairs).
-            logits = rewards_1 - rewards_0  # Size: (bsz, num_pairs).
+        loss_head = F.binary_cross_entropy_with_logits(logits, choice.to(logits.dtype), reduction="mean")
+        print("----Working with head " + str(i) + " ----")
+        for j in range(num_heads):
+            loss_j = torch.autograd.grad(loss_head, model.reward_head[j].weight, allow_unused=True)
+            if i == j:
+                print("Loss for head " + str(j) + "should be non-zero: " + str(loss_j))
+            else:
+                print("Loss for head " + str(j) + "should be 0: " + str(loss_j))
+        losses.append(loss_head)
 
-            loss_head = F.binary_cross_entropy_with_logits(logits, choice_i.to(logits.dtype), reduction="mean")
-            print("----Working with head " + str(i) + " ----")
-            for j in range(self.num_heads):
-                loss_j = torch.autograd.grad(loss_head, self.reward_head[j].weight, allow_unused=True)
-                if i == j:
-                    print("Loss for head " + str(j) + "should be non-zero: " + str(loss_j))
-                else:
-                    print("Loss for head " + str(j) + "should be 0: " + str(loss_j))
-            losses.append(loss_head)
-
-        # Average the losses from all heads
-        loss = sum(losses) / self.num_heads
-        return loss
+    # Average the losses from all heads
+    loss = sum(losses) / num_heads
+    return loss
 
 def main():
     parser = transformers.HfArgumentParser(
@@ -104,15 +118,16 @@ def main():
     )
     _, data_args, training_args = parser.parse_args_into_dataclasses()
     os.environ["WANDB_PROJECT"] = training_args.wandb_project
-    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "facebook/opt-1.3b",
         cache_dir=constants.DEFAULT_CACHE_DIR,
         model_max_length=512,
         padding_side="left",  # Ensure reward is always extracted at the last token embedding.
         use_fast=False,
+        padding = True,
+        max_length=512,
     )
-    tokenizer.padding = training_args.padding
+    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
     data_module = data_utils.make_binary_reward_modeling_data_module(
         tokenizer=tokenizer,
         data_args=data_args,
@@ -121,14 +136,19 @@ def main():
     # import ipdb; ipdb.set_trace()
     train_dataloader = torch.utils.data.DataLoader(data_module["train_dataset"], batch_size=256, shuffle=True)
     dataiter = iter(train_dataloader)
-    inputs = next(dataiter)
-    new_model = TestRewardModel()
-    # inputs = {}
-    # print(input_ids)
-    # inputs["input_ids"] = input_ids
-    # inputs["attention_mask"] = attention_mask
-    # inputs["choice"] = choice
-    return new_model.compute_training_loss(inputs)
+    mid_inputs = next(dataiter)
+    num_heads = 4
+    # new_model = MultiHeadRewardModel(RewardConfig, num_heads)
+    inputs = {}
+    import ipdb; ipdb.set_trace()
+    print(mid_inputs)
+    inputs["input_ids"] = mid_inputs["input_ids"][0]
+    inputs["choice"] = mid_inputs["choice"][0]
+    inputs["index_0"] = mid_inputs["index_0"][0]
+    inputs["index_1"] = mid_inputs["index_1"][0]
+    attention_mask = (torch.triu(torch.ones(input_ids.shape[0], input_ids.shape[0])) == 1).transpose(0, 1)
+    inputs["attention_mask"] = attention_mask.float().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
+    return new_model.compute_training_loss(inputs, new_model, num_heads)
 
 
 if __name__ == "__main__":

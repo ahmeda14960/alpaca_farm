@@ -152,6 +152,7 @@ def main():
             low_cpu_mem_usage=low_cpu_mem_usage,
             device_map=device_map,
             config=config,
+            num_heads=10,
         )
         common.let_model_save_mem_when_zero_grad(model)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -170,7 +171,7 @@ def main():
     )
 
     trainer = reward_modeling_trainer.EnsembleTrainer(
-        num_heads=3,  # Number of ensemble members (you can adjust this)
+        num_heads=10,  # Number of ensemble members (you can adjust this)
         model=model,
         tokenizer=tokenizer,
         args=training_args,
