@@ -622,6 +622,7 @@ def main():
         **data_module,
     )
 
+    trainer.evaluate()
     logger.warning("hooray! evaluation finished successfully.", main_process_only=True)
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     logger.warning(
