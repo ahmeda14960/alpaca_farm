@@ -46,6 +46,7 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
         hidden_states = apex_patch.apex_layernorm(
             self.self_attn_layer_norm, hidden_states
         )
+        # import ipdb; ipdb.set_trace()
         query = self.self_attn.q_proj(hidden_states)
         key = self.self_attn.k_proj(hidden_states)
         value = self.self_attn.v_proj(hidden_states)
@@ -60,6 +61,7 @@ class OPTDecoderLayer(modeling_opt.OPTDecoderLayer):
                 )
                 for tensor in (query, key, value)
             )
+            # import ipdb; ipdb.set_trace()
             hidden_states = flash_attn_varlen_func(
                 q=query,
                 k=key,
@@ -216,8 +218,8 @@ class OPTDecoder(modeling_opt.OPTDecoder):
 
         # Embed inputs and positions
         input_ids = input_ids.view(-1, input_ids.shape[-1])
+        # import ipdb; ipdb.set_trace()
         inputs_embeds = self.embed_tokens(input_ids)
-
         pos_embeds = self.embed_positions(attention_mask, past_key_values_length)
         assert (
             inputs_embeds.size() == pos_embeds.size()
@@ -304,6 +306,7 @@ class OPTForCausalLM(modeling_opt.OPTForCausalLM):
         # print(copy_config)
         # super().__init__(copy_config)
         # self.model = OPTModel(copy_config)
+        # import ipdb; ipdb.set_trace()
         super().__init__(config)
         self.model = OPTModel(config)
         self.post_init()
