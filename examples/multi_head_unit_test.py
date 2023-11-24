@@ -44,6 +44,7 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
     def __init__(self, config: RewardConfig, num_heads: int = 4, **kwargs):
         super(MultiHeadRewardModel, self).__init__(config)
         self.backbone_model = common.make_generative_lm(config.backbone_model_name_or_path, **kwargs)
+        self.backbone_model = self.backbone_model.to(torch.bfloat16)
         hidden_size = common.get_transformer_hidden_size(self.backbone_model)
         reward_head = torch.nn.ModuleList([torch.nn.Linear(hidden_size, 1) for i in range(num_heads)])
         for i in range(num_heads):
@@ -91,7 +92,9 @@ def compute_training_loss(inputs, model, num_heads):
         attention_mask = (torch.triu(torch.ones(inputs["input_ids"].shape[1], inputs["input_ids"].shape[0])) == 1).transpose(0, 1)
         attention_mask = attention_mask.bfloat16().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
 
+        print("HELLO")
         outputs = model.forward(input_ids=input_ids, head_index=i, attention_mask=attention_mask)
+        print("GOODBYE")
         logits = outputs.rewards
         # rewards = einops.rearrange(rewards_flat, "(b c) -> b c", c=num_candidates)  # Size: (bsz, num_candidates).
 
@@ -136,14 +139,14 @@ def main():
         training_args=training_args,
     )
     # import ipdb; ipdb.set_trace()
-    train_dataloader = torch.utils.data.DataLoader(data_module["train_dataset"], batch_size=256, shuffle=True)
+    train_dataloader = torch.utils.data.DataLoader(data_module["train_dataset"], batch_size=4, shuffle=True)
     dataiter = iter(train_dataloader)
     mid_inputs = next(dataiter)
     num_heads = 4
     rew_config = RewardConfig(backbone_model_name_or_path="//home/azureuser/out/opt_1b_alpsft_20231116213715")
-    new_model = MultiHeadRewardModel(flash_attn=True, fp16=False, bf16=True, low_cpu_mem_usage=True, device_map=None, config=rew_config, num_heads=num_heads)
+    new_model = MultiHeadRewardModel(config=rew_config, num_heads=num_heads, flash_attn=True, fp16=False, bf16=True, low_cpu_mem_usage=True, device_map=None)
     inputs = {}
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     print(mid_inputs)
     inputs["input_ids"] = mid_inputs["input_ids"][0]
     inputs["choice"] = mid_inputs["choice"][0]

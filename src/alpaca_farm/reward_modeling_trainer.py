@@ -74,7 +74,7 @@ class EnsembleTrainer(transformers.Trainer):
     def compute_training_loss(self, model, inputs, return_outputs=False):
         losses = []
         logits_list = []
-        
+         
         # input_ids, attention_mask each of size (bsz, num_candidates, seq_len).
         # index_0, index_1 each of size (bsz, num_pairs); indexes into input_ids.
         # choice of size (bsz, num_pairs); 1 if index_1's seq is chosen, 0 otherwise
