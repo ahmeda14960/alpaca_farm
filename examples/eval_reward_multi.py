@@ -151,7 +151,17 @@ def main():
     )
 
     multi_head = True
-    plot_accuracy_vs_likelihood(model_dir, validation_dataloader, multi_head)
+    for mode in ("min", "max", "median"):
+        average_likelihoods, mean_accuracies, std_accuracies = plot_accuracy_vs_likelihood(model_dir, validation_dataloader, mode, multi_head)
+        er_label = "mode = " + mode
+        plt.errorbar(average_likelihoods, mean_accuracies, yerr=std_accuracies, fmt='-o', capsize=5, label=er_label)
+    plt.xlabel("Likelihood")
+    plt.ylabel("Accuracy")
+    plt.title("Accuracy vs. Likelihood")
+    plt.grid(True)
+    plt.legend(loc='upper left')
+    plt.savefig("all_new_plot.png")
+    plt.show()
 
 def accuracy_per_likelihood_bin(model, device, validation_loader, bin_edges, mode="min"):
     assert mode in ["max", "median", "min"], "Invalid mode. Choose from 'max', 'median', or 'min'."
@@ -222,7 +232,7 @@ def accuracy_per_likelihood_bin(model, device, validation_loader, bin_edges, mod
 
     return bin_accuracies
 
-def plot_accuracy_vs_likelihood(model_dirs, validation_loader, multi_head=False):
+def plot_accuracy_vs_likelihood(model_dirs, validation_loader, mode, multi_head=False):
     bin_edges = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     # this is zero index, np bin returns 1 index!
     accuracies_by_bin = {i:[] for i in range(1, len(bin_edges))}
@@ -242,7 +252,7 @@ def plot_accuracy_vs_likelihood(model_dirs, validation_loader, multi_head=False)
     #     models.append(model)
     #     device_list.append(device)
 
-    mode = "min"
+    # mode = "min"
     bin_accuracies = accuracy_per_likelihood_bin(model, device, validation_loader, bin_edges, mode=mode)
     for bin_idx, accuracy in bin_accuracies.items():
         # Add accuracy to the correct bin
@@ -261,14 +271,8 @@ def plot_accuracy_vs_likelihood(model_dirs, validation_loader, multi_head=False)
     if mode == "min":
         mean_accuracies = mean_accuracies[:-1]
         std_accuracies = std_accuracies[:-1]
-    import ipdb; ipdb.set_trace()
-    plt.errorbar(average_likelihoods, mean_accuracies, yerr=std_accuracies, fmt='-o', capsize=5)
-    plt.xlabel(mode + "_Likelihood")
-    plt.ylabel("Accuracy")
-    plt.title("Accuracy vs. Likelihood")
-    plt.grid(True)
-    plt.savefig(mode + "_new_plot.png")
-    plt.show()
+    # import ipdb; ipdb.set_trace()
+    return average_likelihoods, mean_accuracies, std_accuracies
 
 if __name__ == "__main__":
     main()
