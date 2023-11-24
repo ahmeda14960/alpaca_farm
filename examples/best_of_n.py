@@ -94,7 +94,6 @@ def run_decode(
         tf32=tf32,
         seed=seed,
     )
-    import ipdb; ipdb.set_trace()
     sample_mode = sample_mode_formatter.format(
         temperature=temperature, max_new_tokens=max_new_tokens, seed=seed
     )
@@ -179,7 +178,6 @@ def run_rerank(
         [dict_data["prompt"] + output for output in dict_data["output"]]
         for dict_data in list_dict_data_or_path
     ]
-    import ipdb; ipdb.set_trace()
     # TODO(lxuechen): FlashAttention reward model is not correctly loaded.
     top_sequences, top_indices, bottom_sequences, bottom_indices = score.rerank_sequences_with_huggingface(
         sequences=sequences,
