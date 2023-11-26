@@ -68,6 +68,7 @@ class TrainingArguments(transformers.TrainingArguments):
     wandb_project: str = field(default=constants.WANDB_PROJECT)
     flash_attn: bool = field(default=False)
     optim: str = field(default="adamw_torch")
+    num_heads: int = field(default=10)
     model_max_length: int = field(
         default=512,
         metadata={
@@ -152,7 +153,7 @@ def main():
             low_cpu_mem_usage=low_cpu_mem_usage,
             device_map=device_map,
             config=config,
-            num_heads=10,
+            num_heads=training_args.num_heads,
         )
         common.let_model_save_mem_when_zero_grad(model)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -171,7 +172,7 @@ def main():
     )
 
     trainer = reward_modeling_trainer.EnsembleTrainer(
-        num_heads=10,  # Number of ensemble members (you can adjust this)
+        num_heads=training_args.num_heads,  # Number of ensemble members (you can adjust this)
         model=model,
         tokenizer=tokenizer,
         args=training_args,

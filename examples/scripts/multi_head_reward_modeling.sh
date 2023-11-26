@@ -1,24 +1,28 @@
 run_number=$1
 # add line that makes the output dir
-# mkdir -p "/scr-ssd/ahmedah/debug-shp-rwl1b-${run_number}/"
+current_datetime=$(date +"%H%M%S")
 
-current_datetime=$(date +"%Y%m%d%H%M%S")
-output_dir=/home/azureuser/out/alp_rw_opt_${current_datetime}
+
+
+seed=${1:-0}
+num_heads=${2:-3}
+
+output_dir=/lfs/skampere1/0/ahmedah/logs/alp_multi_rw_opt_{$num_heads}_heads${current_datetime}
 mkdir -p $output_dir
-
 GPUS=4
 GA=8
 
-torchrun --nproc_per_node=4 --master_port=1343 examples/multi_reward_modeling.py \
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 --master_port=1343 examples/multi_reward_modeling.py \
   --fp16 False \
   --bf16 True \
-  --seed 0 \
-  --model_name_or_path "//home/azureuser/out/opt_1b_alpsft_20231116213715" \
+  --seed $seed \
+  --model_name_or_path "/lfs/skampere1/0/ahmedah/logs/opt1b-alp-sft/" \
   --dataset_name "alpaca_human_preference" \
   --output_dir "$output_dir" \
   --model_max_length 512 \
   --num_train_epochs 1 \
-  --per_device_train_batch_size 1 \
+  --num_heads $num_heads \
+  --per_device_train_batch_size 2 \
   --per_device_eval_batch_size 8 \
   --gradient_accumulation_steps 2 \
   --eval_steps 10 \
@@ -31,11 +35,11 @@ torchrun --nproc_per_node=4 --master_port=1343 examples/multi_reward_modeling.py
   --lr_scheduler_type "cosine" \
   --evaluation_strategy "steps" \
   --logging_steps 10 \
-  --wandb_project "alpaca_farm_debug" \
-  --run_name "alp-rwl-opt1b-multi-10heads" \
+  --wandb_project "alpaca_farm" \
+  --run_name "alp-rwl-opt1b-multi-{$num_heads}heads_{$seed}" \
   --tf32 True \
   --flash_attn True \
   --ddp_timeout 1800 \
   --initialize_model_on_cpu True \
   --fsdp "full_shard auto_wrap" \
-  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" 
+  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer"
