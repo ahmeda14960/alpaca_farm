@@ -129,13 +129,15 @@ def score_sequences_with_huggingface(
         tf32: Whether to use tensorfloat32 for matrix multiplication.
         flash_attn: Turns on flash_attn for the reward model if True.
         type: Whether to use single head or multi head reward model.
-        
+
     Returns:
         A list of floats representing rewards.
     """
     model, tokenizer = load_model_and_tokenizer_for_inference(
         model_name_or_path=model_name_or_path,
-        model_cls=reward_model.RewardModel if type == "single" else reward_model.MultiHeadRewardModel,
+        model_cls=reward_model.RewardModel
+        if type == "single"
+        else reward_model.MultiHeadRewardModel,
         cache_dir=cache_dir,
         model_kwargs=dict(
             torch_dtype=utils.convert_str_dtype_to_torch_dtype(mixed_precision),
@@ -164,6 +166,7 @@ def rerank_sequences_with_huggingface(
     max_instances=sys.maxsize,
     tf32=False,
     flash_attn=False,
+    return_rewards=False,
 ) -> Tuple[List[List[str]], List[List[int]]]:
     """Rerank samples with a reward model.
 
@@ -177,6 +180,7 @@ def rerank_sequences_with_huggingface(
         mixed_precision: Whether to use mixed precision. If None, no casting will be performed.
         tf32: Whether to use tensorfloat32 for matrix multiplication.
         flash_attn: Turns on flash_attn for the reward model if True.
+        return_rewards: Whether to return the rewards.
 
     Returns:
         A tuple with two entries.
@@ -205,4 +209,16 @@ def rerank_sequences_with_huggingface(
         [sequence[i] for i in top_index]
         for sequence, top_index in utils.zip_(sequences, top_indices)
     ]
-    return top_sequences, top_indices
+
+    bottom_indices = rewards.topk(rerank_top_k, dim=1, largest=False).indices.tolist()
+    bottom_sequences = [
+        [sequence[i] for i in bottom_index]
+        for sequence, bottom_index in utils.zip_(sequences, bottom_indices)
+    ]
+
+    if not return_rewards:
+        return top_sequences, top_indices, bottom_sequences, bottom_indices
+    # Else Convert rewards tensor to a nested list for alignment with sequences
+    aligned_rewards = rewards.tolist()
+
+    return top_sequences, top_indices, bottom_sequences, bottom_indices, aligned_rewards

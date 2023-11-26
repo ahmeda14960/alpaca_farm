@@ -22,7 +22,13 @@ import transformers
 
 from alpaca_farm import common, constants, data_utils, logging, reward_modeling_trainer
 from alpaca_farm.models import reward_model
-# from alpaca_farm.reward_modeling_trainer import Trainer, EnsembleTrainer, compute_reward_modeling_metrics, compute_multi_reward_modeling_metrics
+from alpaca_farm.reward_modeling_trainer import (
+    Trainer,
+    EnsembleTrainer,
+    compute_reward_modeling_metrics,
+)
+
+
 logger = logging.get_logger(__name__)
 
 
@@ -164,7 +170,11 @@ def main():
         use_fast=training_args.use_fast_tokenizer,
     )
     tokenizer.padding = training_args.padding
-    data_args.prompt_dict_path = pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json" if "SHP" in data_args.dataset_name else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
+    data_args.prompt_dict_path = (
+        pathlib.Path(__file__).parent / "prompts" / "v0_SHP.json"
+        if "SHP" in data_args.dataset_name
+        else pathlib.Path(__file__).parent / "prompts" / "v0_inputs_noinputs.json"
+    )
     data_module = data_utils.make_binary_reward_modeling_data_module(
         tokenizer=tokenizer,
         data_args=data_args,
@@ -180,7 +190,6 @@ def main():
         **data_module,
     )
 
-    #trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.train()
     logger.warning(
         "hooray! training finished successfully! now on to model saving.",

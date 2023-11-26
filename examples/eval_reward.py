@@ -14,7 +14,8 @@ import contextlib
 import os
 import pathlib
 from datasets import load_dataset
-#import torch.cuda.blas as blas
+
+# import torch.cuda.blas as blas
 
 
 from alpaca_farm import common, constants, data_utils, logging
@@ -152,8 +153,15 @@ def main():
     multi_head = False
     plot_accuracy_vs_likelihood(model_dirs, validation_dataloader, multi_head)
 
-def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edges, mode="min"):
-    assert mode in ["max", "median", "min"], "Invalid mode. Choose from 'max', 'median', or 'min'."
+
+def accuracy_per_likelihood_bin(
+    models, device_list, validation_loader, bin_edges, mode="min"
+):
+    assert mode in [
+        "max",
+        "median",
+        "min",
+    ], "Invalid mode. Choose from 'max', 'median', or 'min'."
 
     likelihoods = []
     predictions = []
@@ -162,22 +170,28 @@ def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edge
     with torch.no_grad():
         for batch in tqdm.tqdm(validation_loader, desc="Validating", leave=False):
             batch_size, num_pairs, context_len = batch["input_ids"].shape
-            
-            all_probs = torch.zeros((batch_size, len(models))).cuda(device_list[0]) # Store all model probabilities
 
-            for idx, model in tqdm.tqdm(enumerate(models), desc="Ensembling", leave=False):
+            all_probs = torch.zeros((batch_size, len(models))).cuda(
+                device_list[0]
+            )  # Store all model probabilities
+
+            for idx, model in tqdm.tqdm(
+                enumerate(models), desc="Ensembling", leave=False
+            ):
                 device = device_list[idx]
                 batch_input_ids = batch["input_ids"].to(device)
                 batch_attention_mask = batch["attention_mask"].to(device)
-                
-                outputs = model(batch_input_ids.view(batch_size*num_pairs, context_len), 
-                                batch_attention_mask.view(batch_size*num_pairs, context_len))
+
+                outputs = model(
+                    batch_input_ids.view(batch_size * num_pairs, context_len),
+                    batch_attention_mask.view(batch_size * num_pairs, context_len),
+                )
                 outputs.rewards = outputs.rewards.view(batch_size, num_pairs)
 
                 exp_rewards = torch.exp(outputs.rewards)
                 sum_exp_rewards = exp_rewards.sum(dim=1)
                 prob_choice_0 = exp_rewards[:, 0] / sum_exp_rewards
-                
+
                 all_probs[:, idx] = prob_choice_0
                 torch.cuda.synchronize(device)
 
@@ -204,33 +218,33 @@ def accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edge
 
     return bin_accuracies
 
-def plot_accuracy_vs_likelihood(model_dirs, validation_loader, multi_head=False):
+
     bin_edges = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     # this is zero index, np bin returns 1 index!
-    accuracies_by_bin = {i:[] for i in range(1, len(bin_edges))}
+    accuracies_by_bin = {i: [] for i in range(1, len(bin_edges))}
     average_likelihoods = []
 
     models = []
     device_list = []
-    device = torch.device('cuda')
-    for idx, model_dir in tqdm.tqdm(enumerate(model_dirs), desc="Loading models", leave=False):
+    device = torch.device("cuda")
+    for idx, model_dir in tqdm.tqdm(
+        enumerate(model_dirs), desc="Loading models", leave=False
+    ):
         config = RewardConfig.from_pretrained(model_dir)
-        if not multi_head:
-            model = RewardModel.from_pretrained(model_dir, config=config, flash_attn=True, bf16=True)
-        else:
-            model = MultiHeadRewardModel.from_pretrained(model_dir, config=config, flash_attn=True, bf16=True)
         model = model.to(device).half().eval()
         models.append(model)
         device_list.append(device)
 
-    bin_accuracies = accuracy_per_likelihood_bin(models, device_list, validation_loader, bin_edges)
+    bin_accuracies = accuracy_per_likelihood_bin(
+        models, device_list, validation_loader, bin_edges
+    )
     for bin_idx, accuracy in bin_accuracies.items():
         # Add accuracy to the correct bin
         accuracies_by_bin[bin_idx].append(accuracy)
 
         # Compute average likelihood for this bin
-        average_likelihood = (bin_edges[bin_idx-1] + bin_edges[bin_idx]) / 2
-        print('bin_idx', bin_idx, 'average_likelihood', average_likelihood)
+        average_likelihood = (bin_edges[bin_idx - 1] + bin_edges[bin_idx]) / 2
+        print("bin_idx", bin_idx, "average_likelihood", average_likelihood)
         average_likelihoods.append(average_likelihood)
 
     # Compute mean and std for accuracies in each bin
@@ -238,13 +252,16 @@ def plot_accuracy_vs_likelihood(model_dirs, validation_loader, multi_head=False)
     std_accuracies = [np.std(accuracies_by_bin[i]) for i in range(1, len(bin_edges))]
 
     # Plot with error bars
-    plt.errorbar(average_likelihoods, mean_accuracies, yerr=std_accuracies, fmt='-o', capsize=5)
+    plt.errorbar(
+        average_likelihoods, mean_accuracies, yerr=std_accuracies, fmt="-o", capsize=5
+    )
     plt.xlabel("Likelihood")
     plt.ylabel("Accuracy")
     plt.title("Accuracy vs. Likelihood")
     plt.grid(True)
     plt.savefig("new_plot.png")
     plt.show()
+
 
 if __name__ == "__main__":
     main()

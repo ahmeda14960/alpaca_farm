@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
+
 import copy
 import dataclasses
 import math
 import sys
+import json
 from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 import einops
@@ -24,6 +27,9 @@ import tqdm
 import transformers
 
 from .. import common, constants, distributed_utils, logging, torch_ops, utils
+from alpaca_farm.models import reward_model
+from alpaca_farm import common
+
 
 logger = logging.get_logger(__name__)
 
@@ -63,7 +69,6 @@ def load_model_and_tokenizer_for_inference(
             - This behavior can be overridden by passing `use_fast` and `padding_side` to tokenizer_kwargs.
     """
     logger.warning(f"Loading model for inference: {model_name_or_path}")
-
     local_rank, world_size = distributed_utils.setup()
     device = (
         torch.device("cuda", local_rank)
@@ -90,7 +95,41 @@ def load_model_and_tokenizer_for_inference(
         default_tokenizer_kwargs.update(tokenizer_kwargs)
         tokenizer_kwargs = default_tokenizer_kwargs
 
-    model = model_cls.from_pretrained(model_name_or_path, **model_kwargs).eval()
+    # check of model_cls is alpaca_farm.models.reward_model.RewardModel
+    if "rwl" in model_name_or_path:
+        ctx_mgr = contextlib.nullcontext()
+        backbone_model_path = None
+        with ctx_mgr:
+            # find config for reward model
+            try:
+                # Open the file
+                with open(f"{model_name_or_path}config.json", "r") as file:
+                    # Parse JSON data
+                    data = json.load(file)
+
+                    # Extract the 'model' value
+                    backbone_model_path = data["backbone_model_name_or_path"]
+                    print(f"Backbone Model: {backbone_model_path}")
+            except FileNotFoundError:
+                print("File not found. Please check the file path.")
+            except KeyError:
+                print("'model' key not found in the JSON data.")
+            except Exception as e:
+                print(f"An error occurred: {e}")
+            config = reward_model.RewardConfig(
+                backbone_model_name_or_path=backbone_model_path
+            )
+            model = reward_model.RewardModel(
+                flash_attn=True,
+                fp16=False,
+                bf16=True,
+                low_cpu_mem_usage=True,
+                device_map={"": torch.device("cuda", 0)},
+                config=config,
+            )
+            common.let_model_save_mem_when_zero_grad(model)
+    else:
+        model = model_cls.from_pretrained(model_name_or_path, **model_kwargs).eval()
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_name_or_path, **tokenizer_kwargs
     )

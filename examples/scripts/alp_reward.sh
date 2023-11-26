@@ -38,7 +38,4 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 --master_port=1343 exam
   --tf32 True \
   --flash_attn True \
   --ddp_timeout 1800 \
-  --initialize_model_on_cpu True \
-  --fsdp "full_shard auto_wrap" \
-  --fsdp_transformer_layer_cls_to_wrap "OPTDecoderLayer" 
- 
+  --initialize_model_on_cpu True

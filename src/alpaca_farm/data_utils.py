@@ -39,7 +39,9 @@ def make_supervised_data_module(
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
     if "alpaca" in data_args.dataset_name:
-        alpaca_instructions = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+        alpaca_instructions = datasets.load_dataset(
+            data_args.dataset_path, data_args.dataset_name
+        )
     else:
         alpaca_instructions = datasets.load_dataset(data_args.dataset_name)
         data_args.train_splits = ["train"]
@@ -92,15 +94,15 @@ def make_binary_reward_modeling_data_module(
     prompt_dict = utils.jload(data_args.prompt_dict_path)
     data_collator = DataCollatorForBinaryRewardModelingDataset(tokenizer=tokenizer)
 
-
     if "SHP" in data_args.dataset_name:
         alpaca_human_preference = datasets.load_dataset(data_args.dataset_name)
         split = "validation" if eval else "train"
     else:
-        alpaca_human_preference = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+        alpaca_human_preference = datasets.load_dataset(
+            data_args.dataset_path, data_args.dataset_name
+        )
         split = "preference"
-    
-    
+
     train_df = pd.DataFrame(alpaca_human_preference[split])
 
     train_dataset = BinaryRewardModelingDataset(
@@ -123,7 +125,7 @@ def make_binary_reward_modeling_data_module(
             )
         else:
             eval_df = pd.DataFrame(alpaca_human_preference["validation"])
-        
+
             eval_dataset = BinaryRewardModelingDataset(
                 df=eval_df,
                 prompt_dict=prompt_dict,
@@ -153,7 +155,9 @@ def make_rl_data_module(
     prompt_dict = utils.jload(data_args.prompt_dict_path)
 
     if "alpaca" in data_args.dataset_name:
-        alpaca_instructions = datasets.load_dataset(data_args.dataset_path, data_args.dataset_name)
+        alpaca_instructions = datasets.load_dataset(
+            data_args.dataset_path, data_args.dataset_name
+        )
     else:
         alpaca_instructions = datasets.load_dataset(data_args.dataset_name)
         data_args.train_splits = ["train"]
@@ -179,7 +183,7 @@ def make_rl_data_module(
         dataset=data_args.dataset_name,
         query_len=training_args.query_len,
         prompt_postprocessor=prompt_postprocessor,
-        split=data_args.train_splits[0]
+        split=data_args.train_splits[0],
     )
     eval_dataset = QueryDataset(
         df=eval_df,
@@ -188,7 +192,7 @@ def make_rl_data_module(
         dataset=data_args.dataset_name,
         query_len=training_args.query_len,
         prompt_postprocessor=prompt_postprocessor,
-        split=data_args.eval_splits[0]
+        split=data_args.eval_splits[0],
     )
     return dict(
         train_dataset=train_dataset,

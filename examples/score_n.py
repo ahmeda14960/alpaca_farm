@@ -28,94 +28,6 @@ sample_mode_formatter = (
     "temperature={temperature},max_new_tokens={max_new_tokens},seed={seed}"
 )
 
-
-def run_decode(
-    decoder_name_or_path: AnyPath,
-    dataset_path="tatsu-lab/alpaca_farm",
-    dataset_name: Optional[str] = "alpaca_farm_evaluation",
-    split="eval",
-    prompt_dict_path=pathlib.Path(__file__).parent
-    / "prompts"
-    / "v0_inputs_noinputs.json",
-    output_path: AnyPathOrNone = None,
-    max_instances=sys.maxsize,
-    per_device_batch_size=4,
-    temperature=1.0,
-    max_new_tokens=300,
-    num_return_sequences=4,
-    mixed_precision=None,
-    tf32=False,
-    seed: Optional[int] = None,
-):
-    """Decode samples from the policy language model.
-
-    Args:
-        decoder_name_or_path: Name or path of the policy language model.
-        dataset_path: Path to the dataset for datasets.load_dataset.
-        dataset_name: Name of the dataset for datasets.load_dataset.
-        prompt_dict_path: Path to the prompt dictionary for formatting the instruction and input into a string.
-        output_path: Optional path to save the decoding results.
-        split: Split of the dataset to decode.
-        max_instances: Maximum number of instances to decode.
-        per_device_batch_size: Batch size for reranking for each device.
-        temperature: Temperature for decoding.
-        max_new_tokens: Maximum number of new tokens to generate.
-        seed: Random seed for decoding.
-        num_return_sequences: Number of sequences to return per each prompt.
-        mixed_precision: Mixed precision mode for the reward model.
-        tf32: Whether to use tensorfloat32 for matrix multiplication.
-
-    Returns:
-        List of dict data with keys.
-        If num_return_sequences > 1, each 'completion' is a list of strings. Otherwise, it is a string.
-    """
-    seed = 7 if seed is None else seed
-    dataset = datasets.load_dataset(dataset_path, dataset_name)
-
-
-    prompts, list_dict_data, metadata = data_preprocessor.format_prompt_with_data_frame(
-        df=pd.DataFrame(dataset[split]),
-        prompt_dict=utils.jload(prompt_dict_path),
-        dataset=dataset_name,
-    )
-    prompts, list_dict_data = prompts[:max_instances], list_dict_data[:max_instances]
-
-    # nested list of compeltions as strings!
-    outputs = decode.decode_prompts_with_huggingface(
-        model_name_or_path=decoder_name_or_path,
-        prompts=prompts,
-        decoding_args=decode.HFDecodingArguments(
-            temperature=temperature,
-            max_new_tokens=max_new_tokens,
-            num_return_sequences=num_return_sequences,
-        ),
-        per_device_batch_size=per_device_batch_size,
-        mixed_precision=mixed_precision,
-        tf32=tf32,
-        seed=seed,
-    )
-    sample_mode = sample_mode_formatter.format(
-        temperature=temperature, max_new_tokens=max_new_tokens, seed=seed
-    )
-    return_list_dict_data = [
-        {
-            "instruction": dict_data["instruction"],
-            "input": dict_data["input"],
-            "output": output,
-            "prompt": prompt,
-            "decoder_name_or_path": decoder_name_or_path,
-            "sample_mode": sample_mode,
-        }
-        for dict_data, prompt, output in utils.zip_(list_dict_data, prompts, outputs)
-    ]
-
-    if output_path is not None and distributed_utils.is_main_process():
-        utils.jdump(return_list_dict_data, output_path)
-
-    
-    return return_list_dict_data
-
-
 def run_rerank(
     list_dict_data_or_path: Union[Sequence[Dict], AnyPath],
     scorer_name_or_path: AnyPath,
@@ -128,6 +40,9 @@ def run_rerank(
     singleton=False,
     dataset_path="tatsu-lab/alpaca_farm",
     dataset_name: Optional[str] = "alpaca_farm_evaluation",
+    prompt_dict_path=pathlib.Path(__file__).parent
+    / "prompts"
+    / "v0_inputs_noinputs.json",
 ):
     """Rerank sequences with reward model.
 
@@ -153,7 +68,7 @@ def run_rerank(
         dataset = datasets.load_dataset(dataset_path, dataset_name)
 
         prompts, list_dict_data, metadata = data_preprocessor.format_prompt_with_data_frame(
-            df=pd.DataFrame(dataset[split]),
+            df=pd.DataFrame(dataset["eval"]),
             prompt_dict=utils.jload(prompt_dict_path),
             dataset=dataset_name,
         )
@@ -179,7 +94,7 @@ def run_rerank(
         for dict_data in list_dict_data_or_path
     ]
     # TODO(lxuechen): FlashAttention reward model is not correctly loaded.
-    top_sequences, top_indices, bottom_sequences, bottom_indices = score.rerank_sequences_with_huggingface(
+    top_sequences, top_indices, bottom_sequences, bottom_indices, aligned_rewards = score.rerank_sequences_with_huggingface(
         sequences=sequences,
         model_name_or_path=scorer_name_or_path,
         per_device_batch_size=per_device_batch_size,
@@ -187,6 +102,7 @@ def run_rerank(
         tf32=tf32,
         flash_attn=flash_attn,
         rerank_top_k=rerank_top_k,
+        return_rewards=True,
     )
 
     return_list_dict_data = [
@@ -199,9 +115,10 @@ def run_rerank(
             "bottom_sequence": bottom_sequence,
             "bottom_index": bottom_index,
             "scorer_name_or_path": scorer_name_or_path,
+            "rewards": reward_list,
         }
-        for top_sequence, top_index, bottom_sequence, bottom_index, dict_data in utils.zip_(
-            top_sequences, top_indices, bottom_sequences, bottom_indices, list_dict_data_or_path
+        for top_sequence, top_index, bottom_sequence, bottom_index, reward_list, dict_data in utils.zip_(
+            top_sequences, top_indices, bottom_sequences, bottom_indices, aligned_rewards, list_dict_data_or_path
         )
     ]
     if output_path is not None and distributed_utils.is_main_process():
@@ -210,10 +127,11 @@ def run_rerank(
     return return_list_dict_data
 
 
-def run_best_of_n(
+def score_n(
     decoder_name_or_path: AnyPath,
     scorer_name_or_path: AnyPath,
     output_path: AnyPathOrNone = None,
+    input_path: AnyPathOrNone = None,
     prompt_dict_path=pathlib.Path(__file__).parent
     / "prompts"
     / "v0_inputs_noinputs.json",
@@ -228,22 +146,11 @@ def run_best_of_n(
     flash_attn=False,
     rerank_top_k=1,
     dump_all=False,
+    singleton=False,
 ):
     """Chain together decoding and rerank."""
-    decode_return_list_dict_data = run_decode(
-        decoder_name_or_path=decoder_name_or_path,
-        prompt_dict_path=prompt_dict_path,
-        split=split,
-        max_instances=max_instances,
-        per_device_batch_size=per_device_batch_size,
-        temperature=temperature,
-        num_return_sequences=num_return_sequences,
-        max_new_tokens=max_new_tokens,
-        mixed_precision=mixed_precision,
-        tf32=tf32,
-    )
     rerank_return_list_dict_data = run_rerank(
-        list_dict_data_or_path=decode_return_list_dict_data,
+        list_dict_data_or_path=input_path,
         scorer_name_or_path=scorer_name_or_path,
         output_path=output_path,
         per_device_batch_size=per_device_batch_size,
@@ -251,6 +158,7 @@ def run_best_of_n(
         tf32=tf32,
         flash_attn=flash_attn,
         rerank_top_k=rerank_top_k,
+        singleton=singleton,
     )
 
     # Convert best-k-of-n into best-of-n.
@@ -265,11 +173,9 @@ def run_best_of_n(
             "top_index": rerank_dict_data["top_index"],
             "bottom_sequence": rerank_dict_data["bottom_sequence"],
             "bottom_index": rerank_dict_data["bottom_index"],
-            "sample_mode": f"best_of_n_{decode_data_dict['sample_mode']}",
+            "rewards": rerank_dict_data["rewards"],
         }
-        for decode_data_dict, rerank_dict_data in utils.zip_(
-            decode_return_list_dict_data, rerank_return_list_dict_data
-        )
+        for rerank_dict_data in rerank_return_list_dict_data
     ]
 
     # call to run_rank above already dumps multiple (ranked) completions per prompt to output_path

@@ -127,6 +127,7 @@ def make_generative_lm(
         # this needs to be GPT neox! gpt neo is different
         model_cls = AutoModel
     
+
     return model_cls.from_pretrained(model_name_or_path, **kwargs)
 
 
@@ -293,6 +294,8 @@ def get_transformer_hidden_size(model: transformers.PreTrainedModel):
         hidden_size_attr_name = "word_embed_proj_dim"
     elif isinstance(model, transformers.T5ForConditionalGeneration):
         hidden_size_attr_name = "d_model"
+    elif isinstance(model, transformers.models.opt.modeling_opt.OPTModel):
+        hidden_size_attr_name = "hidden_size"
     else:
         # Hack to deal with the fact that transformers library changed the LLaMA model name.
         llama_cls = getattr(
@@ -304,6 +307,8 @@ def get_transformer_hidden_size(model: transformers.PreTrainedModel):
         if isinstance(model, llama_cls):
             hidden_size_attr_name = "hidden_size"
         else:
+            import ipdb
+            ipdb.set_trace()
             raise ValueError(f"Unknown base_model type: {type(model)}")
         from typing import Any, Mapping
     return getattr(model.config, hidden_size_attr_name)

@@ -75,12 +75,15 @@ def format_prompt_with_data_frame(
     prompt_dict: dict,
     df_postprocessor: Optional[Callable] = None,
     return_dict=False,
+    dataset: Optional[str] = None,
 ):
     if df_postprocessor is not None:
         df = df_postprocessor(df)
     list_dict_data = df.to_dict(orient="records")
 
-    prompts = [format_prompt(example, prompt_dict) for example in list_dict_data]
+    prompts = [
+        format_prompt(example, prompt_dict, dataset) for example in list_dict_data
+    ]
     metadata = {"prompt_dict": prompt_dict}
 
     if return_dict:
@@ -218,7 +221,9 @@ def preprocess_for_sft(
     ]
     print("format targets")
     targets = [
-        format_output(dict_data, eos_token=tokenizer.eos_token, output_key=dataset_output_key)
+        format_output(
+            dict_data, eos_token=tokenizer.eos_token, output_key=dataset_output_key
+        )
         for dict_data in list_dict_data
     ]
 
@@ -288,7 +293,6 @@ def preprocess_for_reward_modeling(
         list_dict_data = new_list_dict_data
         preference_keys = ("human_ref_A", "human_ref_B")
 
-
     index_0, index_1 = tuple(
         torch.full(
             size=(len(list_dict_data), 1), fill_value=fill_value, dtype=torch.long
@@ -297,15 +301,19 @@ def preprocess_for_reward_modeling(
     )
 
     def _get_numeric_preference(example: dict, dataset: Optional[str] = None):
-        if 'SHP' in dataset:
-            return [example['labels']]
+        if "SHP" in dataset:
+            return [example["labels"]]
         else:
             # 1 vs 2 is stored in table, but for modeling we use 0 vs 1; remap here.
             return {1: 0, 2: 1}[example[split]]
 
-
     choice = torch.tensor(
-       [[_get_numeric_preference(dict_data, dataset)] for dict_data in tqdm.tqdm(list_dict_data, desc="Getting Numeric Preference", disable=not verbose)]
+        [
+            [_get_numeric_preference(dict_data, dataset)]
+            for dict_data in tqdm.tqdm(
+                list_dict_data, desc="Getting Numeric Preference", disable=not verbose
+            )
+        ]
     )
 
     def _get_text(example: dict, output_key: str):
@@ -319,7 +327,12 @@ def preprocess_for_reward_modeling(
 
     # compare the prompt with both completions
     text_list_0, text_list_1 = tuple(
-        [_get_text(dict_data, key) for dict_data in tqdm.tqdm(list_dict_data, desc=f"Getting Text for {key}", disable=not verbose)]
+        [
+            _get_text(dict_data, key)
+            for dict_data in tqdm.tqdm(
+                list_dict_data, desc=f"Getting Text for {key}", disable=not verbose
+            )
+        ]
         for key in preference_keys
     )
 
@@ -371,15 +384,29 @@ def preprocess_for_reward_modeling(
 
     logger.warning(f"Tokenizing {len(list_dict_data)} pairs...")
     tokenized_0, tokenized_1 = tuple(
-        _tokenize_fn(text_list, tokenizer) for text_list in tqdm.tqdm((text_list_0, text_list_1), desc="Tokenizing Text Lists", disable=not verbose)
+        _tokenize_fn(text_list, tokenizer)
+        for text_list in tqdm.tqdm(
+            (text_list_0, text_list_1),
+            desc="Tokenizing Text Lists",
+            disable=not verbose,
+        )
     )
     # "size" (bsz, 2, seq_len)
     input_ids = [
         list(pair)
-        for pair in tqdm.tqdm(utils.zip_(tokenized_0["input_ids"], tokenized_1["input_ids"]), desc="Processing Input IDs", disable=not verbose)
+        for pair in tqdm.tqdm(
+            utils.zip_(tokenized_0["input_ids"], tokenized_1["input_ids"]),
+            desc="Processing Input IDs",
+            disable=not verbose,
+        )
     ]
     labels = [
-        list(pair) for pair in tqdm.tqdm(utils.zip_(tokenized_0["labels"], tokenized_1["labels"]), desc="Processing Labels", disable=not verbose)
+        list(pair)
+        for pair in tqdm.tqdm(
+            utils.zip_(tokenized_0["labels"], tokenized_1["labels"]),
+            desc="Processing Labels",
+            disable=not verbose,
+        )
     ]
     tokenization_metadata = _merge_tokenization_metadata(
         [tokenized_0["tokenization_metadata"], tokenized_1["tokenization_metadata"]]
@@ -578,7 +605,7 @@ class QueryDataset(Dataset):
         dataset: Optional[str] = None,
         df_postprocessor: Optional[Callable] = None,
         prompt_postprocessor: Optional[Callable] = None,
-        split = 'train'
+        split="train",
     ):
         super(QueryDataset, self).__init__()
 
@@ -590,9 +617,7 @@ class QueryDataset(Dataset):
             dataset_output_key = "sft_target"
             # Select preferred response, discard comparisons with low ratios
             new_list_dict_data = []
-            for idx, example in tqdm.tqdm(
-                enumerate(list_dict_data), desc="Filtering"
-            ):
+            for idx, example in tqdm.tqdm(enumerate(list_dict_data), desc="Filtering"):
                 scores = [example["score_A"], example["score_B"]]
                 responses = [" " + example["human_ref_A"], " " + example["human_ref_B"]]
                 score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])

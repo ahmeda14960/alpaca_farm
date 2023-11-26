@@ -21,6 +21,7 @@ from transformers.utils.generic import ModelOutput
 
 from .. import common
 
+
 class RewardConfig(transformers.PretrainedConfig):
     model_type = "reward_model"
 
@@ -29,25 +30,28 @@ class RewardConfig(transformers.PretrainedConfig):
         super(RewardConfig, self).__init__(**kwargs)
         self.backbone_model_name_or_path = backbone_model_name_or_path
         self._name_or_path = backbone_model_name_or_path
-        
+
+
 class EnsembleRewardModel(transformers.PreTrainedModel):
     config_class = RewardConfig
-    
+
     def __init__(self, models, **kwargs):
         super(EnsembleRewardModel, self).__init__(models[0].config)
-        
+
         # Use the provided pre-trained models
         self.models = models
-        
+
         # Combine parameters and buffers for vmap
-        self.fmodel, self.params, self.buffers = functorch.combine_state_for_ensemble(self.models)
-        
+        self.fmodel, self.params, self.buffers = functorch.combine_state_for_ensemble(
+            self.models
+        )
+
     def forward(self, input_ids, attention_mask=None, return_dict=True, **kwargs):
         # Forward pass with vmap over models
         rewards_vmap = functorch.vmap(self.fmodel, in_dims=(0, None, None))(
             self.params, self.buffers, input_ids, attention_mask
         )
-        
+
         # Rewards will have shape (num_models, batch_size)
         return rewards_vmap
 
@@ -72,7 +76,15 @@ class RewardModel(transformers.PreTrainedModel):
     def forward(self, input_ids, attention_mask=None, return_dict=True, **kwargs):
         # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
         # easier to use for later stages of reranking / RL training.
-        outputs = self.backbone_model.model(
+        try:
+            model = self.backbone_model.model
+        except AttributeError:
+            model = self.backbone_model
+            print(
+                "Warning: self.backbone_model.model not found for reward model, using self.backbone_model instead"
+            )
+
+        outputs = model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             return_dict=True,
@@ -84,6 +96,7 @@ class RewardModel(transformers.PreTrainedModel):
         rewards = self.reward_head(last_hidden_state_at_the_end).squeeze(-1)
         return RewardModelOutput(rewards=rewards) if return_dict else (rewards,)
 
+
 class MultiHeadRewardModel(transformers.PreTrainedModel):
     config_class = RewardConfig
 
@@ -92,16 +105,23 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
         self.num_heads = num_heads
         self.backbone_model = common.make_generative_lm(config.backbone_model_name_or_path, **kwargs)
         hidden_size = common.get_transformer_hidden_size(self.backbone_model)
-        reward_head = torch.nn.ModuleList([nn.Linear(hidden_size, 1) for i in range(num_heads)])
+        reward_head = torch.nn.ModuleList(
+            [nn.Linear(hidden_size, 1) for i in range(num_heads)]
+        )
         for i in range(num_heads):
             torch.nn.init.zeros_(reward_head[i].bias)
         self.reward_head = reward_head.to(next(self.backbone_model.parameters()).device)
 
-    def forward(self, input_ids, head_index, attention_mask=None, return_dict=True, **kwargs):
+    def forward(
+        self, input_ids, head_index, attention_mask=None, return_dict=True, **kwargs
+    ):
         # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
         # easier to use for later stages of reranking / RL training.
         outputs = self.backbone_model.model(
-            input_ids=input_ids, attention_mask=attention_mask, return_dict=True, **kwargs
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            return_dict=True,
+            **kwargs
         )
         last_hidden_state = outputs.last_hidden_state
         last_hidden_state_at_the_end = last_hidden_state[:, -1, :]

@@ -1,0 +1,13 @@
+python examples/best_of_n.py \
+  --task "run_best_of_n" \
+  --decoder_name_or_path "/lfs/skampere1/0/ahmedah/logs/opt1b-alp-sft/"\
+  --scorer_name_or_path "/lfs/skampere1/0/ahmedah/logs/opt1b-alp-rwl/" \
+  --num_return_sequences 16 \
+  --per_device_batch_size 32 \
+  --split "eval" \
+  --mixed_precision "bf16" \
+  --tf32 True \
+  --flash_attn True \
+  --output_path "/lfs/skampere1/0/ahmedah/logs/bon_opt_alp/output.json" \
+  --rerank_top_k 4 \
+  --dump_all True
