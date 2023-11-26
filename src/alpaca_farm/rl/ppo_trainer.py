@@ -57,6 +57,7 @@ class PPOTrainer(rl_trainer.RLTrainer):
         reward_model: nn.Module,
         tokenizer: transformers.PreTrainedTokenizer,
         accelerator: accelerate_patch.MyAccelerator,
+        multi_head: bool = False,
         optimizer: Optional[torch.optim.Optimizer] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ):
@@ -73,6 +74,7 @@ class PPOTrainer(rl_trainer.RLTrainer):
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
         )
+        self.multi_head = multi_head
 
     def _shape_reward(
         self, rewards: Tensor, responses: Tensor, logprobs: Tensor, ref_logprobs: Tensor
@@ -473,7 +475,7 @@ def _make_left_padded_tokenizer(
     **kwargs,
 ) -> transformers.PreTrainedTokenizer:
     tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_name_or_path,
+         "facebook/opt-1.3b",
         cache_dir=cache_dir,
         padding_side="left",
         **kwargs,
@@ -507,10 +509,11 @@ def make_models(
     tokenizer: transformers.PreTrainedTokenizer,
     args,
     accelerator: accelerate.Accelerator,
+    multi_head: bool = False,
 ) -> dict:
     def make_generative_policy():
         base_model = common.make_generative_lm(
-            model_name_or_path=args.policy_model_name_or_path,
+            model_name_or_path="facebook/opt-1.3b",
             flash_attn=args.flash_attn,
             mixed_precision=accelerator.mixed_precision,
             cache_dir=args.cache_dir,
@@ -557,6 +560,7 @@ def make_models(
         #     device_map={"": accelerator.device},
         # )
 
+
     # Model construction below seems convoluted, but it's made to trade time for RAM efficiency.
     # For large models, object creation could be extremely RAM intensive.
     # Especially so for multiple processes on single node, each starting off with a copy of the model.
@@ -568,9 +572,14 @@ def make_models(
     if args.init_value_with_reward:
         # Initialize value from reward model a la OAI.
         logger.warning("Initializing value model with reward model.")
-        value_model = rl_models.make_value_with_base_model(
-            args, make_reward_model().backbone_model, tokenizer
-        )
+        if not multi_head: 
+            value_model = rl_models.make_value_with_base_model(
+                args, make_reward_model().backbone_model, tokenizer
+            )
+        else: 
+            value_model = rl_models.make_value_with_base_model(
+                args, make_ensemble_reward_model().backbone_model, tokenizer
+            )
     else:
         logger.warning("Initializing value model with policy model.")
         # Initialize value from policy. Works for sanity, but generally performs worse in instruction-following.
@@ -592,7 +601,10 @@ def make_models(
     ref_policy.requires_grad_(False)
     ref_policy = accelerator.prepare(ref_policy)  # noqa
 
-    reward_model = make_reward_model()
+    if not multi_head:
+        reward_model = make_reward_model()
+    else:
+        reward_model = make_ensemble_reward_model()
     reward_model.requires_grad_(False)
     reward_model = accelerator.prepare(reward_model)
 

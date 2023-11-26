@@ -102,9 +102,8 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
 
     def __init__(self, config: RewardConfig, num_heads: int = 4, **kwargs):
         super(MultiHeadRewardModel, self).__init__(config)
-        self.backbone_model = common.make_generative_lm(
-            config.backbone_model_name_or_path, **kwargs
-        )
+        self.num_heads = num_heads
+        self.backbone_model = common.make_generative_lm(config.backbone_model_name_or_path, **kwargs)
         hidden_size = common.get_transformer_hidden_size(self.backbone_model)
         reward_head = torch.nn.ModuleList(
             [nn.Linear(hidden_size, 1) for i in range(num_heads)]

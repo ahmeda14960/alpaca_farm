@@ -20,13 +20,14 @@ from typing import List, Literal
 
 import transformers
 
-from alpaca_farm import common, constants, data_utils, logging
+from alpaca_farm import common, constants, data_utils, logging, reward_modeling_trainer
 from alpaca_farm.models import reward_model
 from alpaca_farm.reward_modeling_trainer import (
     Trainer,
     EnsembleTrainer,
     compute_reward_modeling_metrics,
 )
+
 
 logger = logging.get_logger(__name__)
 
@@ -73,6 +74,7 @@ class TrainingArguments(transformers.TrainingArguments):
     wandb_project: str = field(default=constants.WANDB_PROJECT)
     flash_attn: bool = field(default=False)
     optim: str = field(default="adamw_torch")
+    num_heads: int = field(default=10)
     model_max_length: int = field(
         default=512,
         metadata={
@@ -150,13 +152,14 @@ def main():
         config = reward_model.RewardConfig(
             backbone_model_name_or_path=model_args.model_name_or_path
         )
-        model = reward_model.RewardModel(
+        model = reward_model.MultiHeadRewardModel(
             flash_attn=training_args.flash_attn,
             fp16=training_args.fp16,
             bf16=training_args.bf16,
             low_cpu_mem_usage=low_cpu_mem_usage,
             device_map=device_map,
             config=config,
+            num_heads=training_args.num_heads,
         )
         common.let_model_save_mem_when_zero_grad(model)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -178,24 +181,15 @@ def main():
         training_args=training_args,
     )
 
-    trainer = Trainer(
+    trainer = reward_modeling_trainer.EnsembleTrainer(
+        num_heads=training_args.num_heads,  # Number of ensemble members (you can adjust this)
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        compute_metrics=compute_reward_modeling_metrics,
+        compute_metrics=reward_modeling_trainer.compute_multi_reward_modeling_metrics, 
         **data_module,
     )
 
-    # trainer = Trainer(
-    #     num_heads=4,  # Number of ensemble members (you can adjust this)
-    #     model=model,
-    #     tokenizer=tokenizer,
-    #     args=training_args,
-    #     compute_metrics=compute_reward_modeling_metrics,
-    #     **data_module,
-    # )
-
-    # trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.train()
     logger.warning(
         "hooray! training finished successfully! now on to model saving.",

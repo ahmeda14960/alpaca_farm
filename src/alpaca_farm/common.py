@@ -106,7 +106,7 @@ def make_generative_lm(
         fp16 = mixed_precision == "fp16"
     if bf16 is None:
         bf16 = mixed_precision == "bf16"
-
+    # import ipdb; ipdb.set_trace()
     if flash_attn and not fp16 and not bf16:
         logger.warning(
             "Flash attention does not support fp32. Reverting to standard attention.",
