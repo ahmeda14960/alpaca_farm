@@ -96,7 +96,7 @@ def load_model_and_tokenizer_for_inference(
         tokenizer_kwargs = default_tokenizer_kwargs
 
     # check of model_cls is alpaca_farm.models.reward_model.RewardModel
-    if "rwl" in model_name_or_path:
+    if "rw" in model_name_or_path:
         ctx_mgr = contextlib.nullcontext()
         backbone_model_path = None
         with ctx_mgr:
@@ -119,15 +119,27 @@ def load_model_and_tokenizer_for_inference(
             config = reward_model.RewardConfig(
                 backbone_model_name_or_path=backbone_model_path
             )
-            model = reward_model.RewardModel(
-                flash_attn=True,
-                fp16=False,
-                bf16=True,
-                low_cpu_mem_usage=True,
-                device_map={"": torch.device("cuda", 0)},
-                config=config,
-            )
-            common.let_model_save_mem_when_zero_grad(model)
+            if "multi" in model_name_or_path:
+                model = reward_model.MultiHeadRewardModel(
+                    flash_attn=True,
+                    fp16=False,
+                    bf16=True,
+                    low_cpu_mem_usage=True,
+                    num_heads=10,
+                    device_map={"": torch.device("cuda", 0)},
+                    config=config,
+                )
+                common.let_model_save_mem_when_zero_grad(model)
+            else:
+                model = reward_model.RewardModel(
+                    flash_attn=True,
+                    fp16=False,
+                    bf16=True,
+                    low_cpu_mem_usage=True,
+                    device_map={"": torch.device("cuda", 0)},
+                    config=config,
+                )
+                common.let_model_save_mem_when_zero_grad(model)
     else:
         model = model_cls.from_pretrained(model_name_or_path, **model_kwargs).eval()
     tokenizer = transformers.AutoTokenizer.from_pretrained(

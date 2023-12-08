@@ -96,9 +96,23 @@ def score_sequences_with_huggingface_given_model(
             truncation=True,
         )
         source = common.prepare_inputs(source, device=device)
-        rewards = model(
-            input_ids=source.input_ids, attention_mask=source.attention_mask
-        ).rewards
+        if isinstance(model, reward_model.MultiHeadRewardModel):
+            num_heads = model.num_heads
+            rewards = torch.zeros(
+                (num_heads, source.input_ids.shape[0]), device=device
+            )
+            
+            for head_idx in range(num_heads):
+                rewards[head_idx] = model(
+                    input_ids=source.input_ids,
+                    attention_mask=source.attention_mask,
+                    head_index=head_idx,
+                ).rewards
+            rewards = torch.min(rewards, dim=0).values
+        else:
+            rewards = model(
+                input_ids=source.input_ids, attention_mask=source.attention_mask
+            ).rewards
         if world_size > 1 and divide_work:
             rewards = distributed_utils.all_gather_and_cat(rewards, dim=0)
         return_rewards.extend(rewards.tolist())
@@ -188,6 +202,8 @@ def rerank_sequences_with_huggingface(
         The second is a nested sequence of integers. Each inner sequence contains the indices of the top-k samples.
     """
     sequences = sequences[:max_instances]
+    if "multi" in model_name_or_path:
+        model_type = "multi"
     flat_sequences = [
         sequence_i_j for sequence_i in sequences for sequence_i_j in sequence_i
     ]
@@ -199,6 +215,7 @@ def rerank_sequences_with_huggingface(
         mixed_precision=mixed_precision,
         tf32=tf32,
         flash_attn=flash_attn,
+        type=model_type,
     )
     rewards = einops.rearrange(
         torch.tensor(rewards), "(b m) -> b m", m=len(sequences[0])
