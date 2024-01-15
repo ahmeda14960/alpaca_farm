@@ -29,7 +29,7 @@ from torch import nn
 from torch.distributed.fsdp import FullStateDictConfig
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import StateDictType
-from transformers import AutoModel
+from transformers import AutoModel, OPTForCausalLM
 from transformers.trainer import WEIGHTS_NAME, is_deepspeed_zero3_enabled
 
 # from transformers.integrations import
@@ -106,7 +106,7 @@ def make_generative_lm(
         fp16 = mixed_precision == "fp16"
     if bf16 is None:
         bf16 = mixed_precision == "bf16"
-    # import ipdb; ipdb.set_trace()
+    
     if flash_attn and not fp16 and not bf16:
         logger.warning(
             "Flash attention does not support fp32. Reverting to standard attention.",
@@ -114,15 +114,13 @@ def make_generative_lm(
         )
         flash_attn = False
    
-    if flash_attn and flash_attn_is_installed():
-        if "llama" in model_name_or_path:
-            from .flash_models import flash_llama
+    if flash_attn and flash_attn_is_installed() and "llama" in model_name_or_path:
+        from .flash_models import flash_llama
 
-            model_cls = flash_llama.LlamaForCausalLM
-        elif "opt" in model_name_or_path:
-            from .flash_models import flash_opt
-
-            model_cls = flash_opt.OPTForCausalLM
+        model_cls = flash_llama.LlamaForCausalLM
+        # NOTE (ahmedah): there is a bug with flashopt in this repo with rlhf loading
+    elif "opt" in model_name_or_path:
+        model_cls = OPTForCausalLM
     else:
         # this needs to be GPT neox! gpt neo is different
         model_cls = AutoModel
