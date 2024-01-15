@@ -4,12 +4,12 @@ run_name=$2
 model_name_or_path=$3
 
 #CUDA_VISIBLE_DEVICES=$run_number 
-torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
+torchrun --nproc_per_node=1 --master_port=1242 examples/supervised.py \
   --model_name_or_path "facebook/opt-1.3b" \
   --fp16 False \
   --bf16 True \
   --seed $run_number \
-  --output_dir "/data/ahmed_mohamed_ahmed/code/workstream1_code/output_results" \
+  --output_dir "/nlp/scr-sync/ahmedah/" \
   --num_train_epochs 1 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 1 \
@@ -25,7 +25,7 @@ torchrun --nproc_per_node=8 --master_port=1242 examples/supervised.py \
   --evaluation_strategy "steps" \
   --logging_steps 10 \
   --wandb_project "alpaca_farm" \
-  --run_name "${run_name}" \
+  --run_name "test" \
   --tf32 True \
   --flash_attn True \
   --model_max_length 2048 \
