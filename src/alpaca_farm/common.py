@@ -125,7 +125,6 @@ def make_generative_lm(
         # this needs to be GPT neox! gpt neo is different
         model_cls = AutoModel
     
-
     return model_cls.from_pretrained(model_name_or_path, **kwargs)
 
 

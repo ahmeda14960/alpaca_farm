@@ -29,7 +29,7 @@ logger = logging.get_logger(__name__)
 @dataclass
 class DataArguments:
     dataset_path: str = field(default="tatsu-lab/alpaca_farm")
-    dataset_name: str = field(default="stanfordnlp/SHP")
+    dataset_name: str = field(default="alpaca_instructions")
     train_splits: List[str] = field(default_factory=lambda: ["unlabeled"])
     eval_splits: List[str] = field(default_factory=lambda: ["val"])
     prompt_dict_path: str = field(
@@ -42,7 +42,6 @@ class DataArguments:
 class TrainingArguments(transformers.TrainingArguments):
     wandb_project: str = field(default=constants.WANDB_PROJECT)
     cache_dir: Optional[str] = field(default=constants.DEFAULT_CACHE_DIR)
-
     flash_attn: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     truncate_tokens: Optional[List[str]] = field(
@@ -53,10 +52,7 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     truncate_after: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": "Truncate after this number of tokens. Prevents early truncation."
-        },
+        default=None, metadata={"help": "Truncate after this number of tokens. Prevents early truncation."}
     )
     penalty_reward_value: float = field(
         default=-1.0,
@@ -64,10 +60,6 @@ class TrainingArguments(transformers.TrainingArguments):
             "help": "Reward assigned to sequences that are truncated, "
             "e.g., due to outputting incomplete sentences for given context window."
         },
-    )
-    reward_model_name_or_paths: Optional[List[str]] = field(
-        default_factory=lambda: None,
-        metadata={"help": "Reward model paths if ensembling. "},
     )
     total_epochs: int = field(default=10)
     rollout_batch_size: int = field(default=512)
@@ -94,13 +86,9 @@ class TrainingArguments(transformers.TrainingArguments):
     target_kl: float = field(default=6.0)
     k_beta: float = field(default=0.1)
     adaptive_kl: bool = field(default=False)
-    eval_batches: int = field(
-        default=sys.maxsize,
-        metadata={"help": "Maximum number of batches to evaluate on."},
-    )
+    eval_batches: int = field(default=sys.maxsize, metadata={"help": "Maximum number of batches to evaluate on."})
     init_value_with_reward: bool = field(
-        default=True,
-        metadata={"help": "Initialize the value model with the reward model."},
+        default=True, metadata={"help": "Initialize the value model with the reward model."}
     )
     save_steps_extra: Optional[str] = field(
         default=None,
@@ -109,10 +97,11 @@ class TrainingArguments(transformers.TrainingArguments):
             "Parse this with str.split('__')."
         },
     )
-    query_len: int = field(default=520)
+    query_len: int = field(default=192)
     response_len: int = field(default=300)
     policy_model_name_or_path: str = field(default=None)
     reward_model_name_or_path: str = field(default=None)
+    gold_reward_model_name_or_path: str = field(default=None)
     use_fast_tokenizer: bool = field(
         default=False,
         metadata={
@@ -127,22 +116,17 @@ class TrainingArguments(transformers.TrainingArguments):
         # super().__post_init__()
 
         if self.tf32:  # super().__post_init__() actually does this.
-            torch.backends.cuda.matmul.allow_tf32 = (
-                torch.backends.cudnn.allow_tf32
-            ) = True  # noqa
+            torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True  # noqa
 
         world_size = distributed_utils.get_world_size()
 
         # Checks on rollout_batch_size only matter for PPO.
-        assert (
-            self.rollout_batch_size >= self.rollout_per_device_batch_size * world_size
-        ), (
+        assert self.rollout_batch_size >= self.rollout_per_device_batch_size * world_size, (
             "rollout_batch_size is smaller than rollout_per_device_batch_size * world_size. "
             "Increase the former or decrease the latter to fix this."
         )
         assert (
-            self.rollout_batch_size % (self.rollout_per_device_batch_size * world_size)
-            == 0
+            self.rollout_batch_size % (self.rollout_per_device_batch_size * world_size) == 0
         ), "rollout_batch_size is not a multiple of rollout_per_device_batch_size * world_size. "
 
         assert self.step_batch_size >= self.step_per_device_batch_size * world_size, (
@@ -159,12 +143,8 @@ class TrainingArguments(transformers.TrainingArguments):
             f"\trollout_per_device_batch_size: {self.rollout_per_device_batch_size}\n"
             f"\tworld_size: {world_size}\n",
         )
-        assert (
-            self.rollout_batch_size // self.rollout_per_device_batch_size
-        ) % world_size == 0
-        self.rollout_accumulation_steps = (
-            self.rollout_batch_size // self.rollout_per_device_batch_size // world_size
-        )
+        assert (self.rollout_batch_size // self.rollout_per_device_batch_size) % world_size == 0
+        self.rollout_accumulation_steps = self.rollout_batch_size // self.rollout_per_device_batch_size // world_size
 
         logger.warning(
             f"Step stats:\n"
@@ -172,12 +152,8 @@ class TrainingArguments(transformers.TrainingArguments):
             f"\tstep_per_device_batch_size: {self.step_per_device_batch_size}\n"
             f"\tworld_size: {world_size}\n",
         )
-        assert (
-            self.step_batch_size // self.step_per_device_batch_size
-        ) % world_size == 0
-        self.gradient_accumulation_steps = (
-            self.step_batch_size // self.step_per_device_batch_size // world_size
-        )
+        assert (self.step_batch_size // self.step_per_device_batch_size) % world_size == 0
+        self.gradient_accumulation_steps = self.step_batch_size // self.step_per_device_batch_size // world_size
 
         logger.warning(
             f"Accumulation steps:\n"
@@ -186,9 +162,7 @@ class TrainingArguments(transformers.TrainingArguments):
         )
 
         if self.save_steps_extra is not None:
-            self.save_steps_extra_list = [
-                int(string) for string in self.save_steps_extra.split("__")
-            ]
+            self.save_steps_extra_list = [int(string) for string in self.save_steps_extra.split("__")]
         else:
             self.save_steps_extra_list = []
 
