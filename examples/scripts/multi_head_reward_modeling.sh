@@ -16,15 +16,15 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 --master_port=1343 exam
   --fp16 False \
   --bf16 True \
   --seed $seed \
-  --model_name_or_path "/lfs/skampere1/0/ahmedah/logs/opt1b-alp-sft/" \
-  --dataset_name "alpaca_human_preference" \
-  --output_dir "$output_dir" \
+  --model_name_or_path "/lfs/skampere1/0/ahmedah/logs/opt1bsftalp/" \
+  --dataset_name "alpaca_noisy_multi_preference" \
+  --output_dir "/lfs/skampere1/0/ahmedah/logs/opt1bmultirwlalp/" \
   --model_max_length 512 \
-  --num_train_epochs 1 \
+  --num_train_epochs 3 \
   --num_heads $num_heads \
-  --per_device_train_batch_size 2 \
+  --per_device_train_batch_size 4 \
   --per_device_eval_batch_size 8 \
-  --gradient_accumulation_steps 2 \
+  --gradient_accumulation_steps 4 \
   --eval_steps 10 \
   --save_strategy "steps" \
   --save_steps 1000000000 \

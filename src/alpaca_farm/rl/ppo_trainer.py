@@ -173,7 +173,6 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				for text in (text_sequences, text_responses)
 			)
 			sequences, responses = common.prepare_inputs((sequences, responses), device=self.accelerator.device)
-			import ipdb; ipdb.set_trace()
 			reward_outputs = self.reward_model(**sequences)
 			reward_outputs = self.post_reward(reward_outputs, responses.input_ids)
 			rollouts_batch.update(reward_outputs)
@@ -431,26 +430,29 @@ def make_models(
 		)
 		utils.stable_resize_token_embeddings(base_model, len(tokenizer))
 		return base_model
+		
 
-	def make_multi_head_reward_model():
-		return reward_model_module.MultiHeadRewardModel.from_pretrained(
+	def make_reward_model():
+		if args.multi:
+			logger.warning("Initializing multi-head reward model.")
+			return reward_model_module.MultiHeadRewardModel.from_pretrained(
             args.reward_model_name_or_path,
             flash_attn=args.flash_attn,
             mixed_precision=accelerator.mixed_precision,
             cache_dir=args.cache_dir,
             low_cpu_mem_usage=True,
             device_map={"": accelerator.device},
-        )
-
-	def make_reward_model():
-		return reward_model_module.RewardModel.from_pretrained(
-			args.reward_model_name_or_path,
-			flash_attn=args.flash_attn,
-			mixed_precision=accelerator.mixed_precision,
-			cache_dir=args.cache_dir,
-			low_cpu_mem_usage=True,
-			device_map={"": accelerator.device},
-		)
+        	)
+		else:
+			logger.warning("Initializing single-head reward model.")
+			return reward_model_module.RewardModel.from_pretrained(
+				args.reward_model_name_or_path,
+				flash_attn=args.flash_attn,
+				mixed_precision=accelerator.mixed_precision,
+				cache_dir=args.cache_dir,
+				low_cpu_mem_usage=True,
+				device_map={"": accelerator.device},
+			)
 
 	def make_gold_reward_model():
 		return reward_model_module.RewardModel.from_pretrained(
@@ -471,7 +473,7 @@ def make_models(
 	if args.init_value_with_reward:
 		# Initialize value from reward model a la OAI.
 		logger.warning("Initializing value model with reward model.")
-		value_model = rl_models.make_value_with_base_model(args, make_multi_head_reward_model().backbone_model, tokenizer)
+		value_model = rl_models.make_value_with_base_model(args, make_reward_model().backbone_model, tokenizer)
 	else:
 		logger.warning("Initializing value model with policy model.")
 		# Initialize value from policy. Works for sanity, but generally performs worse in instruction-following.
@@ -487,6 +489,7 @@ def make_models(
 	ref_policy.requires_grad_(False)
 	ref_policy = accelerator.prepare(ref_policy)  # noqa
 
+	# trying multi-head reward model
 	reward_model = make_reward_model()
 	reward_model.requires_grad_(False)
 	reward_model = accelerator.prepare(reward_model)
