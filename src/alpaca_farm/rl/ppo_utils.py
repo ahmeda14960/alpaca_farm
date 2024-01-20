@@ -98,8 +98,8 @@ class TrainingArguments(transformers.TrainingArguments):
             "Parse this with str.split('__')."
         },
     )
-    query_len: int = field(default=192)
-    response_len: int = field(default=300)
+    query_len: int = field(default=1024)
+    response_len: int = field(default=1024)
     policy_model_name_or_path: str = field(default=None)
     reward_model_name_or_path: str = field(default=None)
     gold_reward_model_name_or_path: str = field(default=None)

@@ -219,6 +219,7 @@ def preprocess_for_sft(
     sources = [
         format_prompt(dict_data, prompt_dict, dataset) for dict_data in list_dict_data
     ]
+    
     print("format targets")
     targets = [
         format_output(
@@ -240,6 +241,7 @@ def preprocess_for_sft(
     examples_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in examples_tokenized.items()}
     sources_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in sources_tokenized.items()}
 
+    
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     print("process labels")
