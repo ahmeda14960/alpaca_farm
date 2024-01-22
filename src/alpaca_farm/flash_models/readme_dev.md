@@ -1,0 +1,3 @@
+-pip install -e .
+-pip install torch (pip install everything that is not found)
+-pip install -e . (again if did not work first time)
