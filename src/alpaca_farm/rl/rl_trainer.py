@@ -123,7 +123,7 @@ class RLTrainer(object):
         not be wrapped with `torch.no_grad` or `torch.enable_grad`!!!
         """
         if self.accelerator.distributed_type == DistributedType.FSDP:
-            inputs = self.tokenizer("fsdp are you happy now? :)" * 50, return_tensors="pt")
+            inputs = self.tokenizer("fsdp are you happy now? :)" * 100, return_tensors="pt")
             inputs = common.prepare_inputs(inputs, device=self.accelerator.device)
             self.policy(inputs["input_ids"], inputs["attention_mask"], inputs["input_ids"])
 

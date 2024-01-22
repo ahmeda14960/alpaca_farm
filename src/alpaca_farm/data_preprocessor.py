@@ -235,7 +235,7 @@ def preprocess_for_sft(
     ]
 
     # Get the indices where 'input_ids_lens' is strictly less than 2048
-    valid_indices = [i for i, lens in enumerate(sources_tokenized['input_ids_lens']) if lens < 2048]
+    valid_indices = [i for i, lens in enumerate(sources_tokenized['input_ids_lens']) if lens < 1024]
     print(f"filtered samples: {len(examples_tokenized) - len(valid_indices)}")
     # filter dictionaries
     examples_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in examples_tokenized.items()}

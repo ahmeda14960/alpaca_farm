@@ -96,26 +96,28 @@ class AutoregressivePolicy(Policy):
         attention_mask = input_ids.ne(self.base_tokenizer.pad_token_id)
         attention_mask[:, : queries.size(1)] = query_attn_masks
         # Fix position id issues and ensure consistency with `respond` for GPT and OPT.
+        #TODO (ahmed) submit PR for bug (?)
 
         response_lengths = responses.ne(self.base_tokenizer.pad_token_id).sum(dim=1)
         max_response_len = min(self.args.response_len, response_lengths.max().item())
 
-        #TODO (ahmed) submit PR for bug
+
+        # before
         inputs = self.base_model.prepare_inputs_for_generation(
             input_ids=input_ids,
             attention_mask=attention_mask,
             use_cache=False,
         )
         outputs = self.base_model(**inputs, output_hidden_states=True)
-        original_logits = outputs.logits[:, -max_response_len - 1 : -1]
+        original_logits = outputs.logits[:, -self.args.response_len - 1 : -1]
         logits = original_logits / temperature
-        labels = input_ids[:, -max_response_len:]
+        labels = input_ids[:, -self.args.response_len :]
         logprobs = torch_ops.compute_logprobs(
             logits, labels, ignore_index=self.base_tokenizer.pad_token_id
         )
         entropies = -(logits.softmax(dim=-1) * logits.log_softmax(dim=-1)).sum(dim=-1)
         last_hidden_state = outputs.hidden_states[-1][
-            :, -max_response_len - 1 : -1
+            :, -self.args.response_len - 1 : -1
         ]
         return dict(
             original_logits=original_logits,

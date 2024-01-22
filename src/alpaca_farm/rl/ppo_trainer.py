@@ -140,6 +140,7 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				common.prepare_inputs(batch, device=self.accelerator.device),
 				keys=("queries", "query_attn_masks"),
 			)
+			
 			respond_outputs = unwrapped_policy.respond(queries, query_attn_masks, temperature=self.args.temperature)
 			(responses,) = common.unpack_dict(respond_outputs, ("responses",))
 
@@ -173,8 +174,20 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				for text in (text_sequences, text_responses)
 			)
 			sequences, responses = common.prepare_inputs((sequences, responses), device=self.accelerator.device)
-			reward_outputs = self.reward_model(**sequences)
+			sequencesb = sequences.copy()
+			# if args.multi:
+			# 	sequencesb.update({"head_index" : 0})
+			reward_outputs = self.reward_model(**sequencesb)
 			reward_outputs = self.post_reward(reward_outputs, responses.input_ids)
+
+			# TODO: SOMEWHERE HERE EVAL REWARDS ON GOLD TRUTH SEQUENCES:
+			# rewards_sliced = reward_outputs["rewards"][:-1, :]
+
+			# # Find the minimum values over axis 0
+			# min_values = torch.min(rewards_sliced, dim=0)
+			# min_rewards = min_values.values
+			# reward_outputs["rewards"] = min_rewards
+
 			rollouts_batch.update(reward_outputs)
 
 			# Shape reward with KL penalty.
@@ -196,8 +209,8 @@ class PPOTrainer(rl_trainer.RLTrainer):
 
 			
 			rollouts.append(rollouts_batch_cpu)
+		
 
-		# Items in dict need to be of same shape.
 		rollouts = common.merge_dict(rollouts, merge_fn=torch.cat)
 		# Estimating advantages outside the loop gives more samples for reward normalization.
 		advantages = self._estimate_advantage(
@@ -502,7 +515,7 @@ def make_models(
 
 	# TODO: This is a hack to get FSDP running. Remove in the future when this is fixed.
 	if accelerator.distributed_type == accelerate.DistributedType.FSDP:
-		inputs = tokenizer("fsdp are you happy now??? :)" * 50, return_tensors="pt")
+		inputs = tokenizer("fsdp are you happy now??? :)" * 100, return_tensors="pt")
 		inputs = {key: value.to(accelerator.device) for key, value in inputs.items()}
 		actor_critic(inputs["input_ids"], inputs["attention_mask"], inputs["input_ids"])
 

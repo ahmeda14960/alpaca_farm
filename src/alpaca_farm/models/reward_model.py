@@ -126,5 +126,7 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
         last_hidden_state = outputs.last_hidden_state
         last_hidden_state_at_the_end = last_hidden_state[:, -1, :]
         # TODO(lxuechen): Make returning rewards at all positions and last_hidden_state an option.
-        rewards = self.reward_head[head_index](last_hidden_state_at_the_end).squeeze(-1)
-        return RewardModelOutput(rewards=rewards) if return_dict else (rewards,)
+        rewards = []
+        for i in range(self.num_heads):
+            rewards.append(self.reward_head[i](last_hidden_state_at_the_end).squeeze(-1))
+        return RewardModelOutput(rewards=torch.stack(rewards)) if return_dict else (rewards,)
