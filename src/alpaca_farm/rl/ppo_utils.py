@@ -44,6 +44,7 @@ class TrainingArguments(transformers.TrainingArguments):
     cache_dir: Optional[str] = field(default=constants.DEFAULT_CACHE_DIR)
     flash_attn: bool = field(default=False)
     multi: bool = field(default=False)
+    ensemble: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     truncate_tokens: Optional[List[str]] = field(
         default_factory=lambda: None,
@@ -98,8 +99,8 @@ class TrainingArguments(transformers.TrainingArguments):
             "Parse this with str.split('__')."
         },
     )
-    query_len: int = field(default=1024)
-    response_len: int = field(default=1024)
+    query_len: int = field(default=192)
+    response_len: int = field(default=300)
     policy_model_name_or_path: str = field(default=None)
     reward_model_name_or_path: str = field(default=None)
     gold_reward_model_name_or_path: str = field(default=None)

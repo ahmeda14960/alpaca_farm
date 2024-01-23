@@ -30,6 +30,9 @@ def main():
     parser = transformers.HfArgumentParser((DataArguments, TrainingArguments))
     data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # check args first
+    assert not (training_args.ensemble and training_args.multi), "Invalid configuration: Either ensemble or multi must be True, or both must be False."
+
     accelerator = accelerate_patch.MyAccelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
         log_with=["wandb"],
@@ -56,6 +59,7 @@ def main():
     data_module: dict = data_utils.make_rl_data_module(
         tokenizer=tokenizer, data_args=data_args, training_args=training_args
     )
+
 
     trainer = PPOTrainer(
         args=training_args,

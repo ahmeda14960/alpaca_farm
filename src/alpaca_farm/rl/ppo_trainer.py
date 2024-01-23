@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple, List
 
 import accelerate
 import pandas as pd
@@ -48,9 +48,12 @@ class PPOTrainer(rl_trainer.RLTrainer):
 		tokenizer: transformers.PreTrainedTokenizer,
 		accelerator: accelerate_patch.MyAccelerator,
 		gold_reward_model: nn.Module = None,
+		reward_ensemble: List[nn.Module] = None,
 		optimizer: Optional[torch.optim.Optimizer] = None,
 		lr_scheduler: Optional[LRScheduler] = None,
 	):
+
+		# reward model here should just be an ensemble member
 		super(PPOTrainer, self).__init__(
 			args=args,
 			train_dataset=train_dataset,
@@ -66,7 +69,11 @@ class PPOTrainer(rl_trainer.RLTrainer):
 			lr_scheduler=lr_scheduler,
 		)
 
-		self.overopt = True
+		self.multi = args.multi
+		# can i just do this?
+		if reward_ensemble is not None:
+			self.ensemble = True
+			self.rwl_ensemble = reward_ensemble
 
 	def _shape_reward(
 		self, rewards: Tensor, responses: Tensor, logprobs: Tensor, ref_logprobs: Tensor
@@ -175,18 +182,34 @@ class PPOTrainer(rl_trainer.RLTrainer):
 			)
 			sequences, responses = common.prepare_inputs((sequences, responses), device=self.accelerator.device)
 			sequencesb = sequences.copy()
-			# if args.multi:
-			# 	sequencesb.update({"head_index" : 0})
+			
 			reward_outputs = self.reward_model(**sequencesb)
 			reward_outputs = self.post_reward(reward_outputs, responses.input_ids)
 
 			# TODO: SOMEWHERE HERE EVAL REWARDS ON GOLD TRUTH SEQUENCES:
-			# rewards_sliced = reward_outputs["rewards"][:-1, :]
+			if self.multi:
+				# adds extra head from some reason
+				rewards_sliced = reward_outputs["rewards"][:-1, :]
 
-			# # Find the minimum values over axis 0
-			# min_values = torch.min(rewards_sliced, dim=0)
-			# min_rewards = min_values.values
-			# reward_outputs["rewards"] = min_rewards
+				# Find the minimum values over axis 0
+				min_values = torch.min(rewards_sliced, dim=0)
+				min_rewards = min_values.values
+				reward_outputs["rewards"] = min_rewards
+
+			elif self.ensemble:
+				reward_outputs_list = []
+				for rwl in self.rwl_ensemble:
+					reward_outputs = rwl(**sequencesb)
+					reward_outputs = self.post_reward(reward_outputs, responses.input_ids)
+					reward_outputs_list.append(reward_outputs["rewards"])
+				
+				total_reward = torch.stack(reward_outputs_list)
+				min_values = torch.min(total_reward, dim=0)
+				min_rewards = min_values.values
+				reward_outputs["rewards"] = min_rewards
+
+
+				
 
 			rollouts_batch.update(reward_outputs)
 
@@ -467,6 +490,18 @@ def make_models(
 				device_map={"": accelerator.device},
 			)
 
+	def make_reward_ensemble_model(curr_path):
+		logger.warning("Initializing single-head reward model.")
+		return reward_model_module.RewardModel.from_pretrained(
+			curr_path,
+			flash_attn=args.flash_attn,
+			mixed_precision=accelerator.mixed_precision,
+			cache_dir=args.cache_dir,
+			low_cpu_mem_usage=True,
+			device_map={"": accelerator.device},
+		)
+	
+
 	def make_gold_reward_model():
 		return reward_model_module.RewardModel.from_pretrained(
 			args.gold_reward_model_name_or_path,
@@ -503,9 +538,21 @@ def make_models(
 	ref_policy = accelerator.prepare(ref_policy)  # noqa
 
 	# trying multi-head reward model
-	reward_model = make_reward_model()
-	reward_model.requires_grad_(False)
-	reward_model = accelerator.prepare(reward_model)
+	if not args.ensemble:
+		reward_model = make_reward_model()
+		reward_model.requires_grad_(False)
+		reward_model = accelerator.prepare(reward_model)
+	else:
+		#TODO fix terrible harcoded code :)
+		rwl_paths = []
+		reward_ensemble = [] 
+		for idx in range(1, 4):
+			rwl_paths.append(f"/lfs/skampere1/0/ahmedah/logs/opt1brwlalp_{idx}/")
+		for path in rwl_paths:
+			reward_model = make_reward_ensemble_model(path)
+			reward_model.requires_grad_(False)
+			reward_model = accelerator.prepare(reward_model)
+			reward_ensemble.append(reward_model)
 
 	logger.warning("\n Initializing gold reward model.")
 	gold_reward_model = make_gold_reward_model()
@@ -519,4 +566,8 @@ def make_models(
 		inputs = {key: value.to(accelerator.device) for key, value in inputs.items()}
 		actor_critic(inputs["input_ids"], inputs["attention_mask"], inputs["input_ids"])
 
-	return dict(policy=actor_critic, ref_policy=ref_policy, reward_model=reward_model, gold_reward_model=gold_reward_model)
+	if args.ensemble:
+		return dict(policy=actor_critic, ref_policy=ref_policy, reward_model=reward_ensemble[0], reward_ensemble=reward_ensemble, gold_reward_model=gold_reward_model)
+	else:
+		return dict(policy=actor_critic, ref_policy=ref_policy, reward_model=reward_model, gold_reward_model=gold_reward_model)
+
