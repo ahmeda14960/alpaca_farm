@@ -45,6 +45,7 @@ class TrainingArguments(transformers.TrainingArguments):
     flash_attn: bool = field(default=False)
     multi: bool = field(default=False)
     ensemble: bool = field(default=False)
+    varnorm: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     truncate_tokens: Optional[List[str]] = field(
         default_factory=lambda: None,

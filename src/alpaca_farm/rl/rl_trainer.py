@@ -154,6 +154,7 @@ class RLTrainer(object):
 
     def step(self, train_dataloader, step_idx: int):
         queries_batches = [next(train_dataloader) for _ in range(self.args.rollout_accumulation_steps)]
+        # modify here?
         rollouts = self.rollout(queries_batches)
         train_stats = self.step_with_rollouts(rollouts)
         if self.lr_scheduler is not None:
@@ -283,12 +284,16 @@ class RLTrainer(object):
         return utils.InfiniteLoader(train_dataloader)
 
     def get_rollouts_dataloader(self, rollouts: Dict[str, Tensor], shuffle=True, drop_last=True, keys=None):
-        if keys is None:
-            keys = tuple(rollouts.keys())
+        # if keys is None:
+        # hard code list for now
+        keys = tuple(rollouts.keys())
 
+
+        
         def collate_rollouts(instances: Sequence[tuple]):
             return {key: torch.stack([instance[idx] for instance in instances]) for idx, key in enumerate(keys)}
 
+        
         rollouts_dataset = TensorDataset(*[rollouts[key] for key in keys])
         rollouts_dataloader = DataLoader(
             dataset=rollouts_dataset,

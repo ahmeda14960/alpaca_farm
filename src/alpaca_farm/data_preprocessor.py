@@ -30,7 +30,7 @@ logger = logging.get_logger(__name__)
 
 
 def format_prompt(
-    example: dict, prompt_dict: dict, dataset: Optional[str] = None
+    example: dict, prompt_dict: dict, dataset: Optional[str] = "alpaca_instructions"
 ) -> str:
     """Formats a prompt with a prompt_dict formatter.
 
@@ -219,7 +219,7 @@ def preprocess_for_sft(
     sources = [
         format_prompt(dict_data, prompt_dict, dataset) for dict_data in list_dict_data
     ]
-    
+
     print("format targets")
     targets = [
         format_output(
@@ -235,13 +235,28 @@ def preprocess_for_sft(
     ]
 
     # Get the indices where 'input_ids_lens' is strictly less than 2048
-    valid_indices = [i for i, lens in enumerate(sources_tokenized['input_ids_lens']) if lens < 1024]
+    valid_indices = [
+        i for i, lens in enumerate(sources_tokenized["input_ids_lens"]) if lens < 1024
+    ]
     print(f"filtered samples: {len(examples_tokenized) - len(valid_indices)}")
     # filter dictionaries
-    examples_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in examples_tokenized.items()}
-    sources_tokenized = {key: ([value[i] for i in valid_indices] if key != 'tokenization_metadata' else value) for key, value in sources_tokenized.items()}
+    examples_tokenized = {
+        key: (
+            [value[i] for i in valid_indices]
+            if key != "tokenization_metadata"
+            else value
+        )
+        for key, value in examples_tokenized.items()
+    }
+    sources_tokenized = {
+        key: (
+            [value[i] for i in valid_indices]
+            if key != "tokenization_metadata"
+            else value
+        )
+        for key, value in sources_tokenized.items()
+    }
 
-    
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     print("process labels")
@@ -685,13 +700,37 @@ class QueryDataset(Dataset):
 class QueryResponseDataset(Dataset):
     def __init__(
         self,
+        df: pd.DataFrame,
         tokenizer: transformers.PreTrainedTokenizer,
-        queries: Sequence[str],
-        responses: Sequence[str],
         query_len: int,
         response_len: int,
+        prompt_dict: dict,
+        dataset: Optional[str] = None,
+        prompt_postprocessor: Optional[Callable] = None,
+        df_postprocessor: Optional[Callable] = None,
     ):
         super(QueryResponseDataset, self).__init__()
+
+        if df_postprocessor is not None:
+            df = df_postprocessor(df)
+
+
+        # prompts / queries
+        list_dict_data = df.to_dict(orient="records")
+        prompts = [
+            format_prompt(example=dict_data, prompt_dict=prompt_dict, dataset="alpaca_instructions")
+            for dict_data in list_dict_data
+        ]
+        if prompt_postprocessor is not None:
+            prompts = [prompt_postprocessor(prompt) for prompt in prompts]
+
+        queries = prompts
+        responses = [
+            format_output(
+                dict_data, eos_token=tokenizer.eos_token
+            )
+            for dict_data in list_dict_data
+        ]
 
         def tokenize_without_truncation(strings):
             return [
@@ -699,65 +738,128 @@ class QueryResponseDataset(Dataset):
                 for string in strings
             ]
 
-        sequences = [
-            query + response for query, response in utils.zip_(queries, responses)
-        ]
-
-        queries = tokenize_without_truncation(queries)
-        sequences = tokenize_without_truncation(sequences)
-        responses = [
-            sequence[len(query) :] for sequence, query in utils.zip_(sequences, queries)
+        tokenized_queries = tokenize_without_truncation(queries)
+        tokenized_sequences = tokenize_without_truncation(
+            [q + r for q, r in zip(queries, responses)]
+        )  
+        tokenized_responses = [
+            seq[len(query) :]
+            for seq, query in zip(tokenized_sequences, tokenized_queries)
         ]
 
         filtered_pairs = [
             (query, response)
-            for query, response in utils.zip_(queries, responses)
+            for query, response in zip(tokenized_queries, tokenized_responses)
             if len(query) <= query_len and len(response) <= response_len
         ]
         filtered_queries = [query for query, _ in filtered_pairs]
         filtered_responses = [response for _, response in filtered_pairs]
 
-        logger.warning(
-            f"Filtered out {len(queries) - len(filtered_queries)} instances out of {len(queries)} that "
-            f"exceed length limit... "
-            f"These examples are not used for training. "
-            f"However they won't be ignored if this is eval set that is used in `RLTrainer.evaluate`."
-        )
-
-        def left_pad_and_stack(
-            list_of_tensors: Sequence[torch.Tensor], target_len: int
-        ):
+        def left_pad_and_stack(list_of_tensors, target_len):
             return torch.stack(
                 [
-                    torch_ops.left_pad(
-                        tensor, target_size=(target_len,), value=tokenizer.pad_token_id
+                    torch.nn.functional.pad(
+                        tensor,
+                        (target_len - len(tensor), 0),
+                        value=tokenizer.pad_token_id,
                     )
                     for tensor in list_of_tensors
                 ]
             )
 
-        queries = left_pad_and_stack(filtered_queries, query_len)
-        responses = left_pad_and_stack(filtered_responses, response_len)
-
-        self.queries = queries
-        self.responses = responses
-        self.query_attn_masks = queries.ne(tokenizer.pad_token_id).long()
+        self.queries = left_pad_and_stack(filtered_queries, query_len)
+        self.responses = left_pad_and_stack(filtered_responses, response_len)
+        self.query_attn_masks = self.queries.ne(tokenizer.pad_token_id).long()
 
     def __getitem__(self, i):
-        return dict(
-            queries=self.queries[i],
-            responses=self.responses[i],
-            query_attn_masks=self.query_attn_masks[i],
-        )
+        return {
+            "queries": self.queries[i],
+            "responses": self.responses[i],
+            "query_attn_masks": self.query_attn_masks[i],
+        }
 
     def __len__(self):
         return len(self.queries)
 
 
+# class QueryResponseDataset(Dataset):
+#     def __init__(
+#         self,
+#         tokenizer: transformers.PreTrainedTokenizer,
+#         queries: Sequence[str],
+#         responses: Sequence[str],
+#         query_len: int,
+#         response_len: int,
+#     ):
+#         super(QueryResponseDataset, self).__init__()
+
+#         def tokenize_without_truncation(strings):
+#             return [
+#                 tokenizer(string, return_tensors="pt", truncation=False).input_ids[0]
+#                 for string in strings
+#             ]
+
+#         sequences = [
+#             query + response for query, response in utils.zip_(queries, responses)
+#         ]
+
+#         queries = tokenize_without_truncation(queries)
+#         sequences = tokenize_without_truncation(sequences)
+#         responses = [
+#             sequence[len(query) :] for sequence, query in utils.zip_(sequences, queries)
+#         ]
+
+#         filtered_pairs = [
+#             (query, response)
+#             for query, response in utils.zip_(queries, responses)
+#             if len(query) <= query_len and len(response) <= response_len
+#         ]
+#         filtered_queries = [query for query, _ in filtered_pairs]
+#         filtered_responses = [response for _, response in filtered_pairs]
+
+#         logger.warning(
+#             f"Filtered out {len(queries) - len(filtered_queries)} instances out of {len(queries)} that "
+#             f"exceed length limit... "
+#             f"These examples are not used for training. "
+#             f"However they won't be ignored if this is eval set that is used in `RLTrainer.evaluate`."
+#         )
+
+#         def left_pad_and_stack(
+#             list_of_tensors: Sequence[torch.Tensor], target_len: int
+#         ):
+#             return torch.stack(
+#                 [
+#                     torch_ops.left_pad(
+#                         tensor, target_size=(target_len,), value=tokenizer.pad_token_id
+#                     )
+#                     for tensor in list_of_tensors
+#                 ]
+#             )
+
+#         queries = left_pad_and_stack(filtered_queries, query_len)
+#         responses = left_pad_and_stack(filtered_responses, response_len)
+
+#         self.queries = queries
+#         self.responses = responses
+#         self.query_attn_masks = queries.ne(tokenizer.pad_token_id).long()
+
+#     def __getitem__(self, i):
+#         return dict(
+#             queries=self.queries[i],
+#             responses=self.responses[i],
+#             query_attn_masks=self.query_attn_masks[i],
+#         )
+
+#     def __len__(self):
+#         return len(self.queries)
+
+
 @dataclasses.dataclass
 class DataCollatorForStackableDataset(object):
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, Tensor]:
+        keys = instances[0].keys()
+        # HARDCODE 
+        keys = ["queries", "query_attn_masks", "responses"]
         return {
-            key: torch.stack([instance[key] for instance in instances])
-            for key in instances[0].keys()
+            key: torch.stack([instance[key] for instance in instances]) for key in keys
         }

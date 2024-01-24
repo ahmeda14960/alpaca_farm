@@ -24,6 +24,7 @@ from .data_preprocessor import (
     DataCollatorForSFTDataset,
     DataCollatorForStackableDataset,
     QueryDataset,
+    QueryResponseDataset,
     SFTDataset,
     split_train_into_train_and_eval,
 )
@@ -185,6 +186,15 @@ def make_rl_data_module(
         prompt_postprocessor=prompt_postprocessor,
         split=data_args.train_splits[0],
     )
+
+    rollouts_dataset = QueryResponseDataset(
+            df=train_df,
+            tokenizer=tokenizer,
+            query_len=training_args.query_len,
+            response_len=training_args.response_len,
+            prompt_dict=prompt_dict,
+            prompt_postprocessor=prompt_postprocessor,
+    )
     eval_dataset = QueryDataset(
         df=eval_df,
         prompt_dict=prompt_dict,
@@ -195,7 +205,7 @@ def make_rl_data_module(
         split=data_args.eval_splits[0],
     )
     return dict(
-        train_dataset=train_dataset,
+        train_dataset=rollouts_dataset,
         eval_dataset=eval_dataset,
         data_collator=DataCollatorForStackableDataset(),
     )
