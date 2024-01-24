@@ -284,9 +284,9 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				total_reward = torch.stack(reward_outputs_list)
 
 				if self.varnorm:
-					prior_var = torch.var(total_reward)
+					prior_var = torch.var(total_reward, dim=1)
 					reduced = total_reward - gt_reward
-					post_var = torch.var(reduced)
+					post_var = torch.var(reduced, dim=1)
 					del total_reward
 					total_reward = reduced
 					reward_outputs["prior_var"] = prior_var
