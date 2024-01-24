@@ -253,12 +253,6 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				gt_reward_outputs = self.reward_model(**gt_sequences)
 				gt_reward_outputs = self.post_reward(gt_reward_outputs, gt_responses.input_ids)
 				gt_reward = gt_reward_outputs["rewards"]
-				reward = reward_outputs["rewards"]
-				reduced = reward - gt_reward
-				prior_var = torch.var(gt_reward)
-				post_var = torch.var(reduced)
-				
-				reward_outputs["rewards"] = reduced
 
 			# TODO: SOMEWHERE HERE EVAL REWARDS ON GOLD TRUTH SEQUENCES:
 			if self.multi:
@@ -284,13 +278,12 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				total_reward = torch.stack(reward_outputs_list)
 
 				if self.varnorm:
-					prior_var = torch.var(total_reward, dim=1)
+					# weird hack to make batching happy?
+					prior_var = torch.var(total_reward, keepdim=True).squeeze(0).expand(64)
 					reduced = total_reward - gt_reward
-					post_var = torch.var(reduced, dim=1)
+					post_var = torch.var(reduced, keepdim=True).squeeze(0).expand(64)
 					del total_reward
 					total_reward = reduced
-					reward_outputs["prior_var"] = prior_var
-					reward_outputs["post_var"] = post_var
 				min_values = torch.min(total_reward, dim=0)
 				min_rewards = min_values.values
 				reward_outputs["rewards"] = min_rewards
@@ -329,6 +322,10 @@ class PPOTrainer(rl_trainer.RLTrainer):
 			values=rollouts["values"].to(self.accelerator.device),
 		)
 		advantages = {key: value.cpu() for key, value in advantages.items()}
+
+		if self.varnorm and self.ensemble:
+			rollouts["prior_var"] = prior_var
+			rollouts["post_var"] = post_var
 		return {**rollouts, **advantages}
 
 	def post_reward(
@@ -461,8 +458,8 @@ class PPOTrainer(rl_trainer.RLTrainer):
 			f"objective/ref_entropies": rollouts["ref_entropies"].mean(),
 		}
 		if self.varnorm:
-			prior_var = rollouts["prior_var"].mean(dim=0)
-			post_var = rollouts["post_var"].mean(dim=0)
+			prior_var = rollouts["prior_var"].mean()
+			post_var = rollouts["post_var"].mean()
 			stats.update({f"objective/prior_var": prior_var, f"objective/post_var": post_var})
 
 		for k, v in train_stats.items():
