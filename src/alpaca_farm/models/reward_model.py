@@ -113,7 +113,7 @@ class MultiHeadRewardModel(transformers.PreTrainedModel):
         self.reward_head = reward_head.to(next(self.backbone_model.parameters()).device)
 
     def forward(
-        self, input_ids, head_index, attention_mask=None, return_dict=True, **kwargs
+        self, input_ids, attention_mask=None, return_dict=True, **kwargs
     ):
         # We only compute the rewards and don't compute the logistic regression loss in this function so that it's
         # easier to use for later stages of reranking / RL training.

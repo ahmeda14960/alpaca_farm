@@ -256,11 +256,20 @@ class PPOTrainer(rl_trainer.RLTrainer):
 
 			# TODO: SOMEWHERE HERE EVAL REWARDS ON GOLD TRUTH SEQUENCES:
 			if self.multi:
-				if self.varnorm:
-					raise NotImplementedError("Variable normalization is not implemented.")	
 				# adds extra head from some reason
 				rewards_sliced = reward_outputs["rewards"][:-1, :]
 
+
+				if self.varnorm:
+					# weird hack to make batching happy?
+					prior_var = torch.var(rewards_sliced, keepdim=True).squeeze(0).expand(64)
+					# multi head rewards will be multi dim so need to transform gt_reward in the same
+					# way
+					gt_reward = gt_reward[:-1, :]
+					reduced = rewards_sliced - gt_reward
+					post_var = torch.var(reduced, keepdim=True).squeeze(0).expand(64)
+					del rewards_sliced
+					rewards_sliced = reduced
 				# Find the minimum values over axis 0
 				min_values = torch.min(rewards_sliced, dim=0)
 				min_rewards = min_values.values
@@ -323,7 +332,7 @@ class PPOTrainer(rl_trainer.RLTrainer):
 		)
 		advantages = {key: value.cpu() for key, value in advantages.items()}
 
-		if self.varnorm and self.ensemble:
+		if self.varnorm:
 			rollouts["prior_var"] = prior_var
 			rollouts["post_var"] = post_var
 		return {**rollouts, **advantages}
