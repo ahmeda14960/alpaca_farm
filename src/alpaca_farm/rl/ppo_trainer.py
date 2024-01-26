@@ -232,35 +232,27 @@ class PPOTrainer(rl_trainer.RLTrainer):
 				(sequences, responses), device=self.accelerator.device
 			)
 
-			
-
-			sequencesb = sequences.copy()
-
-			reward_outputs = self.reward_model(**sequencesb)
+			reward_outputs = self.reward_model(**sequences)
 			reward_outputs = self.post_reward(reward_outputs, responses.input_ids)
 			
-			
-
+			# do varnorm for each case separately
 			if self.varnorm:
 				ground_truth_sequences = [q + r for q, r in utils.zip_(text_queries, text_response_gt)]
 				gt_sequences, gt_responses = tuple(
 					self.tokenizer(text, return_tensors="pt", padding=True, truncation=True) for text in (ground_truth_sequences, text_response_gt)
 				)
-
 				gt_sequences, gt_responses = common.prepare_inputs(
 					(gt_sequences, gt_responses), device=self.accelerator.device
 				)
-				gt_reward_outputs = self.reward_model(**gt_sequences)
-				gt_reward_outputs = self.post_reward(gt_reward_outputs, gt_responses.input_ids)
-				gt_reward = gt_reward_outputs["rewards"]
 
 			# TODO: SOMEWHERE HERE EVAL REWARDS ON GOLD TRUTH SEQUENCES:
 			if self.multi:
 				# adds extra head from some reason
 				rewards_sliced = reward_outputs["rewards"][:-1, :]
-
-
 				if self.varnorm:
+					gt_reward_outputs = self.reward_model(**gt_sequences)
+					gt_reward_outputs = self.post_reward(gt_reward_outputs, gt_responses.input_ids)
+					gt_reward = gt_reward_outputs["rewards"]
 					# weird hack to make batching happy?
 					prior_var = torch.var(rewards_sliced, keepdim=True).squeeze(0).expand(64)
 					# multi head rewards will be multi dim so need to transform gt_reward in the same
@@ -277,22 +269,46 @@ class PPOTrainer(rl_trainer.RLTrainer):
 
 			elif self.ensemble:
 				reward_outputs_list = []
+				if self.varnorm:
+					# create list of pre / post variance
+					prior_var_list = []
+					post_var_list = []
+
 				for rwl in self.rwl_ensemble:
-					reward_outputs = rwl(**sequencesb)
+					reward_outputs = rwl(**sequences)
 					reward_outputs = self.post_reward(
 						reward_outputs, responses.input_ids
 					)
-					reward_outputs_list.append(reward_outputs["rewards"])
+
+					# reward per ensemble
+					reward_tensor = reward_outputs["rewards"]
+					if self.varnorm:
+						# normalize for each ensemble member separately!
+						prior_var_list.append(torch.var(reward_tensor))
+						gt_reward_outputs = rwl(**gt_sequences)
+						gt_reward_outputs = self.post_reward(gt_reward_outputs, gt_responses.input_ids)
+
+						gt_reward = gt_reward_outputs["rewards"]
+						norm_reward = reward_tensor - gt_reward
+
+						post_var_list.append(torch.var(norm_reward))
+						# no mistakes
+						del reward_tensor
+						reward_tensor = norm_reward
+
+					reward_outputs_list.append(reward_tensor)
 
 				total_reward = torch.stack(reward_outputs_list)
 
 				if self.varnorm:
 					# weird hack to make batching happy?
-					prior_var = torch.var(total_reward, keepdim=True).squeeze(0).expand(64)
-					reduced = total_reward - gt_reward
-					post_var = torch.var(reduced, keepdim=True).squeeze(0).expand(64)
-					del total_reward
-					total_reward = reduced
+					prior_var = torch.stack(prior_var_list)
+					post_var = torch.stack(post_var_list)
+
+					# take mean but still make singleton somehow
+					prior_var = torch.mean(prior_var, dim=0).squeeze(0).expand(64)
+					post_var = torch.mean(post_var, dim=0).squeeze(0).expand(64)
+
 				min_values = torch.min(total_reward, dim=0)
 				min_rewards = min_values.values
 				reward_outputs["rewards"] = min_rewards
@@ -722,7 +738,7 @@ def make_models(
 		rwl_paths = []
 		reward_ensemble = []
 		for idx in range(1, 4):
-			rwl_paths.append(f"/self/scr-sync/ahmedah/opt1brwlalp_{idx}/")
+			rwl_paths.append(f"/lfs/skampere1/0/ahmedah/logs/opt1brwlalp_{idx}/")
 		for path in rwl_paths:
 			reward_model = make_reward_ensemble_model(path)
 			reward_model.requires_grad_(False)
