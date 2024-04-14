@@ -6,13 +6,13 @@ kl_coef=${5:-0.05}
 
 config_file="./examples/accelerate_configs/rlhf_ppo_fsdp_opt_8gpu.yaml"
 
-CUDA_VISIBLE_DEVICES=0,1 accelerate launch --config_file "${config_file}" examples/rlhf_ppo.py \
-  --run_name "alp-ppo-opt1b_32bsz_lr2e-5" \
+accelerate launch --config_file "${config_file}" examples/rlhf_ppo.py \
+  --run_name "alpprox1bgold7bppo" \
   --step_per_device_batch_size 8 \
   --rollout_per_device_batch_size 32 \
   --per_device_eval_batch_size 32 \
-  --output_dir "/iris/u/ahmedah/model_outputs/alp/opt1b-ppo/" \
-  --reward_model_name_or_path "/nlp/scr-sync/ahmedah/opt1b-alp-rwl/" \
+  --output_dir "/iris/u/ahmedah/opt1bppoalp" \
+  --reward_model_name_or_path "/iris/u/ahmedah/opt1b" \
   --policy_model_name_or_path "/nlp/scr-sync/ahmedah/opt1b-alp-sft" \
   --init_value_with_reward True \
   --rollout_batch_size 1024 \

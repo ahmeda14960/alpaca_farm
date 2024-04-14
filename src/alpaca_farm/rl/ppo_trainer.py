@@ -81,9 +81,11 @@ class PPOTrainer(rl_trainer.RLTrainer):
 		self.multi = args.multi
 		self.varnorm = args.varnorm
 		# can i just do this?
+		# TODO debug!
 		if reward_ensemble is not None:
 			self.ensemble = True
 			self.rwl_ensemble = reward_ensemble
+			logger.warning(f"\n Ensembles created within PPOtrainer")
 		else:
 			self.ensemble = False
 			self.rwl_ensemble = None
@@ -274,7 +276,11 @@ class PPOTrainer(rl_trainer.RLTrainer):
 					prior_var_list = []
 					post_var_list = []
 
-				for rwl in self.rwl_ensemble:
+				for idx, rwl in enumerate(self.rwl_ensemble):
+					if idx != 1:
+						continue
+
+					
 					reward_outputs = rwl(**sequences)
 					reward_outputs = self.post_reward(
 						reward_outputs, responses.input_ids
@@ -284,14 +290,19 @@ class PPOTrainer(rl_trainer.RLTrainer):
 					reward_tensor = reward_outputs["rewards"]
 					if self.varnorm:
 						# normalize for each ensemble member separately!
+						logger.warning(f" var prior{idx} shape: {torch.var(reward_tensor)}")
 						prior_var_list.append(torch.var(reward_tensor))
 						gt_reward_outputs = rwl(**gt_sequences)
 						gt_reward_outputs = self.post_reward(gt_reward_outputs, gt_responses.input_ids)
 
+
 						gt_reward = gt_reward_outputs["rewards"]
+						logger.warning(f"gt_reward shape: {gt_reward.shape}")
+						logger.warning(f"gt_reward var: {torch.var(gt_reward)}")
 						norm_reward = reward_tensor - gt_reward
 
 						post_var_list.append(torch.var(norm_reward))
+						logger.warning(f" var post{idx} shape: {torch.var(norm_reward)}")
 						# no mistakes
 						del reward_tensor
 						reward_tensor = norm_reward
@@ -673,7 +684,7 @@ def make_models(
 			)
 
 	def make_reward_ensemble_model(curr_path):
-		logger.warning("Initializing single-head reward model.")
+		logger.warning("Initializing reward model for ensemble.")
 		return reward_model_module.RewardModel.from_pretrained(
 			curr_path,
 			flash_attn=args.flash_attn,
@@ -701,8 +712,11 @@ def make_models(
 	policy = rl_models.make_policy_with_base_model(
 		args, make_generative_policy(), tokenizer
 	)
+
 	if args.init_value_with_reward:
 		# Initialize value from reward model a la OAI.
+		# for full ensemble still use a separate RM to make sure we don't mess up the reward model
+		# since we update value function!!
 		logger.warning("Initializing value model with reward model.")
 		value_model = rl_models.make_value_with_base_model(
 			args, make_reward_model().backbone_model, tokenizer
@@ -733,17 +747,20 @@ def make_models(
 		reward_model = make_reward_model()
 		reward_model.requires_grad_(False)
 		reward_model = accelerator.prepare(reward_model)
+		logger.warning("\n no full ensemling done")
 	else:
 		# TODO fix terrible harcoded code :)
+		logger.warning("\n FUll ensemble!")
 		rwl_paths = []
 		reward_ensemble = []
 		for idx in range(1, 4):
-			rwl_paths.append(f"/lfs/skampere1/0/ahmedah/logs/opt1brwlalp_{idx}/")
+			rwl_paths.append(f"/nlp/scr-sync/ahmedah/opt1brwlalp3eps_{idx}/")
 		for path in rwl_paths:
 			reward_model = make_reward_ensemble_model(path)
 			reward_model.requires_grad_(False)
 			reward_model = accelerator.prepare(reward_model)
 			reward_ensemble.append(reward_model)
+	
 
 	logger.warning("\n Initializing gold reward model.")
 	gold_reward_model = make_gold_reward_model()

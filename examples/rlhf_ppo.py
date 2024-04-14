@@ -53,6 +53,8 @@ def main():
     )  # Each process log their own state.
 
     tokenizer: transformers.PreTrainedTokenizer = make_tokenizer(args=training_args)
+    # make models will create the reward ensembles!
+    # then pass them into PPO trainer
     model_module: dict = make_models(
         tokenizer=tokenizer, args=training_args, accelerator=accelerator
     )
