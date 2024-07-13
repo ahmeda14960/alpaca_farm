@@ -27,6 +27,7 @@ from alpaca_farm.models.reward_model import (
 from transformers.trainer_utils import EvalPrediction
 
 import tqdm
+import datetime
 
 
 def create_dataloader(packaged_data, collator, tokenizer, batch_size=32, shuffle=False):
@@ -122,12 +123,12 @@ class DataArguments:
 def main():
     parser = transformers.HfArgumentParser((TrainingArguments, DataArguments))
     training_args, data_args = parser.parse_args_into_dataclasses()
-    # model_dirs = [
-    #     f"/lfs/skampere1/0/ahmedah/logs/optdebug-shp-rwl1b-{run_number}/"
-    #     for run_number in range(1,2)
-    # ]
-    model_dir = f"//home/azureuser/out/alp_rw_opt_20231117001420"
-
+    model_dirs = [
+        f"/lfs/skampere1/0/ahmedah/logs/ppo_multi_alp_{run_number}/"
+        for run_number in range(2)
+    ]
+    # model_dir = f"//home/azureuser/out/alp_rw_opt_20231117001420"
+    model_dir = f"/lfs/skampere1/0/ahmedah/logs/opt1bmultirwlalp/"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "facebook/opt-1.3b",
         model_max_length=training_args.model_max_length,
@@ -147,7 +148,7 @@ def main():
     data_collator = data_module["data_collator"]
 
     validation_dataloader = create_dataloader(
-        train_dataset, data_collator, tokenizer, batch_size=8, shuffle=False
+        train_dataset, data_collator, tokenizer, batch_size=32, shuffle=False
     )
 
     multi_head = True
@@ -160,7 +161,8 @@ def main():
     plt.title("Accuracy vs. Likelihood")
     plt.grid(True)
     plt.legend(loc='upper left')
-    plt.savefig("all_new_plot.png")
+    current_date = datetime.datetime.now().strftime("%Y%m%d")
+    plt.savefig(f"all_new_plot_multi{current_date}.png")
     plt.show()
 
 def accuracy_per_likelihood_bin(model, device, validation_loader, bin_edges, mode="min"):
@@ -175,38 +177,22 @@ def accuracy_per_likelihood_bin(model, device, validation_loader, bin_edges, mod
             batch_size, num_pairs, context_len = batch["input_ids"].shape
             
             all_probs = torch.zeros((batch_size, 1)).cuda(device) # Store all model probabilities
-
-            # for idx, model in tqdm.tqdm(enumerate(models), desc="Ensembling", leave=False):
-            #     device = device_list[idx]
-            #     batch_input_ids = batch["input_ids"].to(device)
-            #     batch_attention_mask = batch["attention_mask"].to(device)
-                
-            #     outputs = model(batch_input_ids.view(batch_size*num_pairs, context_len), 
-            #                     batch_attention_mask.view(batch_size*num_pairs, context_len))
-            #     outputs.rewards = outputs.rewards.view(batch_size, num_pairs)
-
-            #     exp_rewards = torch.exp(outputs.rewards)
-            #     sum_exp_rewards = exp_rewards.sum(dim=1)
-            #     prob_choice_0 = exp_rewards[:, 0] / sum_exp_rewards
-                
-            #     all_probs[:, idx] = prob_choice_0
-            #     torch.cuda.synchronize(device)
-            # import ipdb; ipdb.set_trace()
             head_probs = []
-            for head_index in range(model.num_heads):
-                batch_input_ids = batch["input_ids"].to(device)
-                batch_attention_mask = batch["attention_mask"].to(device)
-                
-                outputs = model(input_ids=batch_input_ids.view(batch_size*num_pairs, context_len), 
-                                attention_mask=batch_attention_mask.view(batch_size*num_pairs, context_len), head_index=head_index)
-                outputs.rewards = outputs.rewards.view(batch_size, num_pairs)
+            batch_input_ids = batch["input_ids"].to(device)
+            batch_attention_mask = batch["attention_mask"].to(device)
+            
+            outputs = model(input_ids=batch_input_ids.view(batch_size*num_pairs, context_len), 
+                            attention_mask=batch_attention_mask.view(batch_size*num_pairs, context_len))
+            
+            # drop last element which isn't learned. This is due to the hacky way 
+            # we train the multi head RM we just ignore the last linear param
+            outputs.rewards = outputs.rewards[:-1]
+            outputs.rewards = outputs.rewards.view(-1, batch_size, num_pairs)
+            exp_rewards = torch.exp(outputs.rewards)
+            sum_exp_rewards = exp_rewards.sum(dim=2)
+            head_probs = exp_rewards[:, :, 0] / sum_exp_rewards
 
-                exp_rewards = torch.exp(outputs.rewards)
-                sum_exp_rewards = exp_rewards.sum(dim=1)
-                prob_choice_0 = exp_rewards[:, 0] / sum_exp_rewards
-                head_probs.append(prob_choice_0)
-            head_probs = torch.stack(head_probs, dim=1)
-            # all_probs[:, 0] = head_probs
+            head_probs = head_probs.transpose(0, 1)
             torch.cuda.synchronize(device)
 
             if mode == "max":
@@ -268,9 +254,10 @@ def plot_accuracy_vs_likelihood(model_dirs, validation_loader, mode, multi_head=
     mean_accuracies = [np.mean(accuracies_by_bin[i]) for i in range(1, len(bin_edges))]
     std_accuracies = [np.std(accuracies_by_bin[i]) for i in range(1, len(bin_edges))]
     # Plot with error bars
-    if mode == "min":
-        mean_accuracies = mean_accuracies[:-1]
-        std_accuracies = std_accuracies[:-1]
+    # (why?)
+    # if mode == "min":
+    #     mean_accuracies = mean_accuracies[:-1]
+    #     std_accuracies = std_accuracies[:-1]
     # import ipdb; ipdb.set_trace()
     return average_likelihoods, mean_accuracies, std_accuracies
 
